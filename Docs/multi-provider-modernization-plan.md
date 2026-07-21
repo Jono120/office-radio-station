@@ -70,7 +70,7 @@ flowchart TB
 Design interfaces around **capabilities**, not a lowest-common-denominator API. Providers declare what they support; the UI and orchestrator adapt.
 
 | Provider | Search | Metadata | Device playback | OAuth | Notes |
-|----------|--------|----------|-----------------|-------|-------|
+| ---------- | -------- | ---------- | ----------------- | ------- | ------- |
 | Spotify | Yes | Yes | Yes (Connect) | Yes | Reference implementation |
 | Apple Music | Yes | Yes | Limited (MusicKit) | Yes | Requires Apple Developer program |
 | YouTube Music | Partial | Yes | Cast/device only | Yes | No official YTM playback API; use YouTube Data API + device cast or mark as search-only initially |
@@ -85,6 +85,7 @@ Start with **Spotify as the reference adapter** that proves the full loop (auth 
 **Target:** [https://github.com/Jono120/office-radio-station](https://github.com/Jono120/office-radio-station) (currently empty, no default branch)
 
 **Current blockers:**
+
 - Local workspace at `C:\Users\jlake\projects\office-radio` is **not a git repository**
 - GitHub CLI is authenticated as `jlake-tech`, which does **not** have push access to `Jono120/office-radio-station`
 - User chose to authenticate as **Jono120** before pushing
@@ -98,6 +99,7 @@ gh auth login --hostname github.com --git-protocol https --web
 ```
 
 When prompted:
+
 1. Choose **GitHub.com**
 2. Choose **HTTPS**
 3. Choose **Login with a web browser** (or paste a PAT if you have one)
@@ -250,7 +252,7 @@ public interface IMusicProviderRegistry
 
 Populate [`OfficeJukebox.Infrastructure`](OfficeJukebox.Infrastructure) with:
 
-```
+```text
 OfficeJukebox.Infrastructure/
   Music/
     MusicProviderRegistry.cs
@@ -365,22 +367,13 @@ Deliver one provider at a time behind the registry. Each adapter gets integratio
 
 ## Suggested delivery order
 
-```mermaid
-gantt
-    title Delivery phases
-    dateFormat YYYY-MM-DD
-    section Foundation
-    Phase1_TrackRef_Persistence     :p1, 2026-07-22, 5d
-    section Abstractions
-    Phase2_ProviderInterfaces       :p2, after p1, 4d
-    section Playback
-    Phase3_Orchestrator             :p3, after p2, 5d
-    section Providers
-    Phase4_Spotify                  :p4a, after p3, 5d
-    Phase4_Apple_YouTube            :p4b, after p4a, 8d
-    section UI
-    Phase5_WebUI                    :p5, after p4a, 6d
-```
+1. **Phase 1 — Foundation:** TrackRef and persistence model
+2. **Phase 2 — Abstractions:** Provider interfaces and registry
+3. **Phase 3 — Playback:** Playback orchestrator in Player
+4. **Phase 4.1 — Spotify:** Reference adapter (auth → search → queue → device play)
+5. **Phase 5 — Web UI:** Search, queue, and now playing — starts once Spotify lands; can run in parallel with Phase 4.2
+6. **Phase 4.2 — Additional providers:** Apple Music adapter, then YouTube Music catalog
+7. **Phase 6 — Operations** (optional, post-MVP): Docker Compose, CI, logging, health checks
 
 **Recommended first milestone:** Phases 1–3 + Spotify (4.1) + minimal Web UI (search, queue, now playing). This delivers a working office jukebox on one provider while the architecture supports others.
 
@@ -389,7 +382,7 @@ gantt
 ## Key files to create or modify
 
 | Area | Action |
-|------|--------|
+| ------ | -------- |
 | [`OfficeJukebox.Domain`](OfficeJukebox.Domain) | Add `TrackRef`, `ProviderCredential`, queue status enum |
 | [`OfficeJukebox.Application`](OfficeJukebox.Application) | Provider interfaces, orchestrator, fix rules/scoring identity |
 | [`OfficeJukebox.Infrastructure`](OfficeJukebox.Infrastructure) | Provider adapters, registry, DI |

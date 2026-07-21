@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import * as signalR from '@microsoft/signalr'
 import './App.css'
 
-const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:5080'
+const API_BASE = import.meta.env.VITE_API_URL ?? ''
+const AUTH_API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:5080'
 
 type QueueItem = {
   id: string
@@ -93,6 +94,20 @@ function App() {
     void refreshQueue()
     void refreshNowPlaying()
     void refreshProviders()
+
+    const params = new URLSearchParams(window.location.search)
+    const authResult = params.get('auth')
+    if (authResult) {
+      const provider = params.get('provider') ?? 'spotify'
+      if (authResult === 'success') {
+        setError(null)
+        void refreshProviders()
+      } else {
+        const message = params.get('message') ?? 'Provider connection failed.'
+        setError(`${provider}: ${message}`)
+      }
+      window.history.replaceState({}, '', window.location.pathname)
+    }
   }, [refreshQueue, refreshNowPlaying, refreshProviders])
 
   useEffect(() => {
@@ -117,7 +132,8 @@ function App() {
       `${API_BASE}/api/search?q=${encodeURIComponent(searchQuery)}&provider=${encodeURIComponent(selectedProvider)}`,
     )
     if (!response.ok) {
-      setError('Search failed for selected provider.')
+      const body = await response.json().catch(() => ({}))
+      setError(body.error ?? 'Search failed for selected provider.')
       return
     }
     setSearchResults(await response.json())
@@ -159,6 +175,21 @@ function App() {
       body: JSON.stringify({ provider, deviceId }),
     })
     await loadDevices(provider)
+  }
+
+  const disconnectProvider = async (providerId: string) => {
+    setError(null)
+    const response = await fetch(`${API_BASE}/api/providers/${providerId}/connection`, { method: 'DELETE' })
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      setError(body.error ?? `Failed to disconnect ${providerId}.`)
+      return
+    }
+    await refreshProviders()
+  }
+
+  const connectProvider = (providerId: string) => {
+    window.location.href = `${AUTH_API_BASE}/api/providers/${providerId}/auth`
   }
 
   return (
@@ -243,9 +274,14 @@ function App() {
               <span>
                 {provider.displayName} — {provider.isAuthenticated ? 'connected' : 'not connected'}
               </span>
-              <button type="button" onClick={() => window.open(`${API_BASE}/api/providers/${provider.id}/auth`, '_blank')}>
+              <button type="button" onClick={() => connectProvider(provider.id)}>
                 Connect
               </button>
+              {provider.isAuthenticated ? (
+                <button type="button" onClick={() => void disconnectProvider(provider.id)}>
+                  Disconnect
+                </button>
+              ) : null}
               <button type="button" onClick={() => void loadDevices(provider.id)}>
                 Devices
               </button>

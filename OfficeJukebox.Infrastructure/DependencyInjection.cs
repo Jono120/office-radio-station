@@ -19,6 +19,7 @@ public static class DependencyInjection
         services.AddOptions<MusicProvidersOptions>().BindConfiguration(MusicProvidersOptions.SectionName);
         services.AddDataProtection();
         services.AddHttpClient("spotify");
+        services.AddHttpClient("spotify-auth");
 
         services.AddScoped<IProviderTokenService, ProviderTokenService>();
         services.AddScoped<IProviderAuthService, SpotifyAuthService>();

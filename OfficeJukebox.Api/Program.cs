@@ -15,7 +15,20 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddSignalR();
 builder.Services.AddDistributedMemoryCache();
-builder.Services.AddSession();
+builder.Services.AddSession(options =>
+{
+    options.Cookie.Name = "OfficeJukebox.Session";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.IsEssential = true;
+});
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+        policy.WithOrigins("http://localhost:5173")
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials());
+});
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddSingleton<IQueueNotifier, SignalRQueueNotifier>();
 builder.Services.AddHttpClient<IPlayerClient, PlayerClient>(client =>
@@ -32,6 +45,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseCors();
 app.UseSession();
 app.MapControllers();
 app.MapHub<QueueHub>("/hubs/queue");

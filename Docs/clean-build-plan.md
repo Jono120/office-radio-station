@@ -10,7 +10,7 @@
 ## Decisions
 
 | Area | Choice | Rationale |
-|------|--------|-----------|
+| ------ | -------- | ----------- |
 | Storage | SQLite via EF Core 8 | Simple local deploy; `%LOCALAPPDATA%/OfficeJukebox/jukebox.db` |
 | Queue state | In-memory `QueueManager` + persisted `TrackPlays` | Matches legacy pattern; persistence for history/scoring |
 | Scoring | C# `TrackScoreService` | Replaces Mongo MapReduce with deterministic C# aggregation + random factor |

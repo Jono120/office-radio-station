@@ -24,6 +24,7 @@
     "NotifyBaseUrl": "http://localhost:5080"
   },
   "MusicProviders": {
+    "WebAppUrl": "http://localhost:5173",
     "Spotify": {
       "Enabled": true,
       "ClientId": "",

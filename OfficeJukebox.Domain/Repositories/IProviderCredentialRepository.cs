@@ -6,5 +6,6 @@ public interface IProviderCredentialRepository
 {
     Task<ProviderCredential?> GetByProviderAsync(string provider, CancellationToken cancellationToken = default);
     Task UpsertAsync(ProviderCredential credential, CancellationToken cancellationToken = default);
+    Task DeleteByProviderAsync(string provider, CancellationToken cancellationToken = default);
     Task SaveChangesAsync(CancellationToken cancellationToken = default);
 }

@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using OfficeJukebox.Api.Services;
 using OfficeJukebox.Application.Abstractions.Music;
 using OfficeJukebox.Contracts.Queue;
+using OfficeJukebox.Infrastructure.Music;
 using OfficeJukebox.Infrastructure.Music.Auth;
 
 namespace OfficeJukebox.Api.Controllers;
@@ -13,22 +15,34 @@ public sealed class SearchController(IMusicProviderRegistry registry) : Controll
     [HttpGet]
     public async Task<IActionResult> Search([FromQuery] string q, [FromQuery] string provider = "spotify", [FromQuery] int limit = 10, CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(q))
+        {
+            return BadRequest(new { error = "Search query is required." });
+        }
+
         var catalog = registry.GetCatalog(provider);
         if (catalog is null || !catalog.Capabilities.HasFlag(ProviderCapabilities.Search))
         {
             return BadRequest(new { error = $"Provider {provider} does not support search." });
         }
 
-        var results = await catalog.SearchAsync(q, limit, cancellationToken);
-        var items = results.Select(t => new SearchResultItem(
-            provider,
-            ExtractExternalId(provider, t),
-            t.Name,
-            t.Album?.Name,
-            t.TrackArtworkUrl,
-            t.DurationMilliseconds,
-            t.Link)).ToList();
-        return Ok(items);
+        try
+        {
+            var results = await catalog.SearchAsync(q, limit, cancellationToken);
+            var items = results.Select(t => new SearchResultItem(
+                provider,
+                ExtractExternalId(provider, t),
+                t.Name,
+                t.Album?.Name,
+                t.TrackArtworkUrl,
+                t.DurationMilliseconds,
+                t.Link)).ToList();
+            return Ok(items);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return StatusCode(StatusCodes.Status401Unauthorized, new { error = ex.Message });
+        }
     }
 
     private static string ExtractExternalId(string provider, Domain.Entities.Track track)
@@ -59,7 +73,12 @@ public sealed class PlaybackController(IPlayerClient playerClient) : ControllerB
     {
         var response = await playerClient.GetDevicesAsync(provider, cancellationToken);
         var content = await response.Content.ReadAsStringAsync(cancellationToken);
-        return Content(content, "application/json");
+        return new ContentResult
+        {
+            StatusCode = (int)response.StatusCode,
+            Content = content,
+            ContentType = "application/json"
+        };
     }
 
     [HttpPut("device")]
@@ -81,7 +100,8 @@ public sealed class PlaybackController(IPlayerClient playerClient) : ControllerB
 public sealed class ProvidersController(
     IMusicProviderRegistry registry,
     IEnumerable<IProviderAuthService> authServices,
-    IProviderTokenService tokenService) : ControllerBase
+    IProviderTokenService tokenService,
+    IOptions<MusicProvidersOptions> musicOptions) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> List(CancellationToken cancellationToken)
@@ -90,7 +110,9 @@ public sealed class ProvidersController(
         var responses = new List<ProviderInfoResponse>();
         foreach (var provider in providers)
         {
-            var authenticated = await tokenService.IsAuthenticatedAsync(provider.Id, cancellationToken);
+            var authenticated = provider.Capabilities.HasFlag(ProviderCapabilities.RequiresAuth)
+                ? await tokenService.IsAuthenticatedAsync(provider.Id, cancellationToken)
+                : true;
             responses.Add(new ProviderInfoResponse(
                 provider.Id,
                 provider.DisplayName,
@@ -111,18 +133,42 @@ public sealed class ProvidersController(
             return NotFound();
         }
 
-        var state = Guid.NewGuid().ToString("N");
-        HttpContext.Session.SetString($"oauth_state_{providerId}", state);
-        return Redirect(auth.BuildAuthorizationUrl(state));
+        try
+        {
+            var state = Guid.NewGuid().ToString("N");
+            HttpContext.Session.SetString($"oauth_state_{providerId}", state);
+            return Redirect(auth.BuildAuthorizationUrl(state));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
     [HttpGet("{providerId}/callback")]
-    public async Task<IActionResult> Callback(string providerId, [FromQuery] string code, [FromQuery] string state, CancellationToken cancellationToken)
+    public async Task<IActionResult> Callback(
+        string providerId,
+        [FromQuery] string? code,
+        [FromQuery] string? state,
+        [FromQuery] string? error,
+        CancellationToken cancellationToken)
     {
+        var webAppUrl = musicOptions.Value.WebAppUrl ?? "http://localhost:5173";
+
+        if (!string.IsNullOrWhiteSpace(error))
+        {
+            return Redirect($"{webAppUrl}?provider={providerId}&auth=error&message={Uri.EscapeDataString(error)}");
+        }
+
+        if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(state))
+        {
+            return Redirect($"{webAppUrl}?provider={providerId}&auth=error&message=missing_code");
+        }
+
         var expected = HttpContext.Session.GetString($"oauth_state_{providerId}");
         if (string.IsNullOrWhiteSpace(expected) || expected != state)
         {
-            return BadRequest(new { error = "Invalid OAuth state." });
+            return Redirect($"{webAppUrl}?provider={providerId}&auth=error&message=invalid_state");
         }
 
         var auth = authServices.FirstOrDefault(a => a.ProviderId.Equals(providerId, StringComparison.OrdinalIgnoreCase));
@@ -131,8 +177,36 @@ public sealed class ProvidersController(
             return NotFound();
         }
 
-        await auth.CompleteAuthorizationAsync(code, cancellationToken);
-        return Ok(new { provider = providerId, authenticated = true });
+        try
+        {
+            var tokens = await auth.CompleteAuthorizationAsync(code, cancellationToken);
+            var expiresAt = DateTime.UtcNow.AddSeconds(tokens.ExpiresIn);
+            await tokenService.StoreTokensAsync(
+                providerId,
+                tokens.AccessToken,
+                tokens.RefreshToken,
+                expiresAt,
+                tokens.Scope,
+                cancellationToken);
+            return Redirect($"{webAppUrl}?provider={providerId}&auth=success");
+        }
+        catch (Exception ex)
+        {
+            return Redirect($"{webAppUrl}?provider={providerId}&auth=error&message={Uri.EscapeDataString(ex.Message)}");
+        }
+    }
+
+    [HttpDelete("{providerId}/connection")]
+    public async Task<IActionResult> Disconnect(string providerId, CancellationToken cancellationToken)
+    {
+        var auth = authServices.FirstOrDefault(a => a.ProviderId.Equals(providerId, StringComparison.OrdinalIgnoreCase));
+        if (auth is null)
+        {
+            return NotFound();
+        }
+
+        await tokenService.DisconnectAsync(providerId, cancellationToken);
+        return Ok(new { provider = providerId, authenticated = false });
     }
 
     private static string[] CapabilitiesToArray(ProviderCapabilities capabilities) =>

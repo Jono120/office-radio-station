@@ -4,6 +4,7 @@ public sealed class MusicProvidersOptions
 {
     public const string SectionName = "MusicProviders";
 
+    public string? WebAppUrl { get; set; }
     public ProviderOptions Spotify { get; set; } = new();
     public ProviderOptions AppleMusic { get; set; } = new();
     public ProviderOptions YouTube { get; set; } = new();

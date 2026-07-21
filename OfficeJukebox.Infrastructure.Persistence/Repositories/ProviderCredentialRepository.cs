@@ -27,6 +27,15 @@ public sealed class ProviderCredentialRepository(JukeboxDbContext dbContext) : I
         }
     }
 
+    public async Task DeleteByProviderAsync(string provider, CancellationToken cancellationToken = default)
+    {
+        var existing = await GetByProviderAsync(provider, cancellationToken);
+        if (existing is not null)
+        {
+            dbContext.ProviderCredentials.Remove(existing);
+        }
+    }
+
     public Task SaveChangesAsync(CancellationToken cancellationToken = default) =>
         dbContext.SaveChangesAsync(cancellationToken);
 }

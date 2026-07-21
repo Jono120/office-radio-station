@@ -4,7 +4,7 @@
 
 OfficeJukebox is a layered .NET 8 solution for office music queueing with multi-provider support (Spotify, Apple Music, YouTube, Manual). Users queue tracks, veto skips, and autoplay fills gaps. Playback is controlled on a shared office device via provider APIs (e.g. Spotify Connect).
 
-```
+```text
 ┌─────────────┐     HTTP      ┌──────────────┐     HTTP      ┌────────────────┐
 │  Web (Vite) │ ────────────► │  Api (BFF)   │ ────────────► │ Player (host)  │
 │  React TS   │   SignalR     │  OAuth/search│               │ queue + playback│
@@ -19,7 +19,7 @@ OfficeJukebox is a layered .NET 8 solution for office music queueing with multi-
 ## Layers
 
 | Project | Responsibility |
-|---------|----------------|
+| --------- | ---------------- |
 | **OfficeJukebox.Domain** | Entities, `TrackRef`, repository interfaces |
 | **OfficeJukebox.Application** | Queue/veto/skip rules, playback orchestrator, provider abstractions |
 | **OfficeJukebox.Infrastructure** | Spotify/Apple/YouTube/Manual adapters, OAuth token storage |
