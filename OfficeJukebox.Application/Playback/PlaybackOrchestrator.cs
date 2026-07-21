@@ -5,6 +5,7 @@ using OfficeJukebox.Application.Serialization;
 using OfficeJukebox.Application.Scoring;
 using OfficeJukebox.Application.Skip;
 using OfficeJukebox.Application.Veto.Rules;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using OfficeJukebox.Domain.Entities;
@@ -14,6 +15,7 @@ using OfficeJukebox.Domain.ValueObjects;
 namespace OfficeJukebox.Application.Playback;
 
 public sealed class PlaybackOrchestrator(
+    PlaybackRuntimeState runtimeState,
     IQueueManager queueManager,
     IMusicProviderRegistry providerRegistry,
     ITrackPlayRepository trackPlayRepository,
@@ -23,15 +25,9 @@ public sealed class PlaybackOrchestrator(
     IEnumerable<IVetoRule> vetoRules,
     ILogger<PlaybackOrchestrator> logger) : IPlaybackOrchestrator
 {
-    private readonly object _lock = new();
-    private TrackPlay? _currentlyPlaying;
+    public TrackPlay? CurrentlyPlayingTrack => runtimeState.CurrentlyPlayingTrack;
 
-    public TrackPlay? CurrentlyPlayingTrack
-    {
-        get { lock (_lock) { return _currentlyPlaying; } }
-    }
-
-    public PlaybackState? CurrentPlaybackState { get; private set; }
+    public PlaybackState? CurrentPlaybackState => runtimeState.CurrentPlaybackState;
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
@@ -40,8 +36,7 @@ public sealed class PlaybackOrchestrator(
 
     public async Task SkipCurrentAsync(string user, CancellationToken cancellationToken = default)
     {
-        TrackPlay? current;
-        lock (_lock) { current = _currentlyPlaying; }
+        var current = runtimeState.GetCurrentTrack();
         if (current is null)
         {
             return;
@@ -63,15 +58,14 @@ public sealed class PlaybackOrchestrator(
             await playback.SkipAsync(cancellationToken);
         }
 
-        lock (_lock) { _currentlyPlaying = null; }
+        runtimeState.SetCurrentTrack(null);
         await queueNotifier.NotifyNowPlayingChangedAsync(cancellationToken);
         await PlayNextIfIdleAsync(cancellationToken);
     }
 
     public async Task VetoCurrentAsync(string user, CancellationToken cancellationToken = default)
     {
-        TrackPlay? current;
-        lock (_lock) { current = _currentlyPlaying; }
+        var current = runtimeState.GetCurrentTrack();
         if (current is null)
         {
             return;
@@ -93,8 +87,7 @@ public sealed class PlaybackOrchestrator(
 
     public async Task PollAndAdvanceAsync(CancellationToken cancellationToken = default)
     {
-        TrackPlay? current;
-        lock (_lock) { current = _currentlyPlaying; }
+        var current = runtimeState.GetCurrentTrack();
         if (current is null)
         {
             await PlayNextIfIdleAsync(cancellationToken);
@@ -108,7 +101,7 @@ public sealed class PlaybackOrchestrator(
         }
 
         var state = await playback.GetStateAsync(cancellationToken);
-        CurrentPlaybackState = state;
+        runtimeState.SetPlaybackState(state);
         await queueNotifier.NotifyPlaybackProgressAsync(state.ProgressMs, state.DurationMs, state.IsPlaying, cancellationToken);
 
         if (!state.IsPlaying && state.ProgressMs == 0 && state.CurrentTrack is null)
@@ -125,12 +118,9 @@ public sealed class PlaybackOrchestrator(
 
     private async Task PlayNextIfIdleAsync(CancellationToken cancellationToken)
     {
-        lock (_lock)
+        if (runtimeState.GetCurrentTrack() is not null)
         {
-            if (_currentlyPlaying is not null)
-            {
-                return;
-            }
+            return;
         }
 
         var next = queueManager.Dequeue();
@@ -152,7 +142,7 @@ public sealed class PlaybackOrchestrator(
             try
             {
                 await playback.PlayAsync(trackRef, cancellationToken);
-                CurrentPlaybackState = await playback.GetStateAsync(cancellationToken);
+                runtimeState.SetPlaybackState(await playback.GetStateAsync(cancellationToken));
             }
             catch (Exception ex)
             {
@@ -160,7 +150,7 @@ public sealed class PlaybackOrchestrator(
             }
         }
 
-        lock (_lock) { _currentlyPlaying = next; }
+        runtimeState.SetCurrentTrack(next);
         await queueNotifier.NotifyQueueChangedAsync(cancellationToken);
         await queueNotifier.NotifyNowPlayingChangedAsync(cancellationToken);
     }
@@ -171,27 +161,24 @@ public sealed class PlaybackOrchestrator(
         await trackPlayRepository.UpdateAsync(current, cancellationToken);
         await trackPlayRepository.SaveChangesAsync(cancellationToken);
         await trackScoreService.ComputeScoresAsync(cancellationToken);
-        lock (_lock) { _currentlyPlaying = null; }
+        runtimeState.SetCurrentTrack(null);
         await queueNotifier.NotifyNowPlayingChangedAsync(cancellationToken);
     }
 }
 
 public sealed class PlaybackLoopService(
-    IPlaybackOrchestrator orchestrator,
+    IServiceScopeFactory scopeFactory,
     ILogger<PlaybackLoopService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await orchestrator.StartAsync(stoppingToken);
+        await RunScopedAsync(orchestrator => orchestrator.StartAsync(stoppingToken), stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                if (orchestrator is PlaybackOrchestrator concrete)
-                {
-                    await concrete.PollAndAdvanceAsync(stoppingToken);
-                }
+                await RunScopedAsync(orchestrator => orchestrator.PollAndAdvanceAsync(stoppingToken), stoppingToken);
             }
             catch (Exception ex)
             {
@@ -200,5 +187,14 @@ public sealed class PlaybackLoopService(
 
             await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);
         }
+    }
+
+    private async Task RunScopedAsync(
+        Func<PlaybackOrchestrator, Task> action,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var orchestrator = scope.ServiceProvider.GetRequiredService<PlaybackOrchestrator>();
+        await action(orchestrator);
     }
 }

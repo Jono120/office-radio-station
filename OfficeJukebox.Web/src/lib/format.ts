@@ -1,0 +1,18 @@
+export function formatMs(ms?: number) {
+  if (!ms) return '0:00'
+  const total = Math.floor(ms / 1000)
+  const minutes = Math.floor(total / 60)
+  const seconds = total % 60
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`
+}
+
+export function queueStatusVariant(status: string): 'default' | 'secondary' | 'outline' {
+  switch (status.toLowerCase()) {
+    case 'playing':
+      return 'default'
+    case 'queued':
+      return 'secondary'
+    default:
+      return 'outline'
+  }
+}

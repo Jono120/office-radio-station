@@ -43,9 +43,10 @@ public static class DependencyInjection
 
     public static IServiceCollection AddPlayback(this IServiceCollection services)
     {
-        services.AddSingleton<PlaybackOrchestrator>();
-        services.AddSingleton<IPlaybackOrchestrator>(sp => sp.GetRequiredService<PlaybackOrchestrator>());
-        services.AddSingleton<IMusicPlayer>(sp => sp.GetRequiredService<IPlaybackOrchestrator>());
+        services.AddSingleton<PlaybackRuntimeState>();
+        services.AddScoped<PlaybackOrchestrator>();
+        services.AddScoped<IPlaybackOrchestrator>(sp => sp.GetRequiredService<PlaybackOrchestrator>());
+        services.AddScoped<IMusicPlayer>(sp => sp.GetRequiredService<IPlaybackOrchestrator>());
         services.AddHostedService<PlaybackLoopService>();
         return services;
     }

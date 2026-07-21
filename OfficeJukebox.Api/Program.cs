@@ -1,4 +1,5 @@
 using OfficeJukebox.Api.Hubs;
+using OfficeJukebox.Api.Options;
 using OfficeJukebox.Api.Services;
 using OfficeJukebox.Application.Abstractions;
 using OfficeJukebox.Infrastructure;
@@ -30,6 +31,7 @@ builder.Services.AddCors(options =>
             .AllowCredentials());
 });
 builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.Configure<AdminOptions>(builder.Configuration.GetSection(AdminOptions.SectionName));
 builder.Services.AddSingleton<IQueueNotifier, SignalRQueueNotifier>();
 builder.Services.AddHttpClient<IPlayerClient, PlayerClient>(client =>
 {

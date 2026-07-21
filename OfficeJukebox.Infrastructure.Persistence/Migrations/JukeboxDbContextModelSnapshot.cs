@@ -15,7 +15,7 @@ namespace OfficeJukebox.Infrastructure.Persistence.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "8.0.11");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
 
             modelBuilder.Entity("OfficeJukebox.Domain.Entities.AdminUser", b =>
                 {
@@ -38,6 +38,41 @@ namespace OfficeJukebox.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("AdminUsers", (string)null);
+                });
+
+            modelBuilder.Entity("OfficeJukebox.Domain.Entities.ProviderCredential", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EncryptedAccessToken")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EncryptedRefreshToken")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Scopes")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Provider")
+                        .IsUnique();
+
+                    b.ToTable("ProviderCredentials", (string)null);
                 });
 
             modelBuilder.Entity("OfficeJukebox.Domain.Entities.RickRollTarget", b =>
@@ -112,6 +147,11 @@ namespace OfficeJukebox.Infrastructure.Persistence.Migrations
                     b.Property<bool>("Excluded")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ExternalLink")
                         .HasColumnType("TEXT");
 
@@ -129,6 +169,11 @@ namespace OfficeJukebox.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("StartedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("TrackJson")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -139,6 +184,8 @@ namespace OfficeJukebox.Infrastructure.Persistence.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Status", "Id");
 
                     b.ToTable("TrackPlays", (string)null);
                 });
@@ -200,6 +247,11 @@ namespace OfficeJukebox.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("ComputedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ExternalLink")
                         .IsRequired()
                         .HasMaxLength(1024)
@@ -211,6 +263,11 @@ namespace OfficeJukebox.Infrastructure.Persistence.Migrations
                     b.Property<double>("MillisecondsSinceLastPlay")
                         .HasColumnType("REAL");
 
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("Score")
                         .HasColumnType("INTEGER");
 
@@ -219,6 +276,9 @@ namespace OfficeJukebox.Infrastructure.Persistence.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Provider", "ExternalId")
+                        .IsUnique();
 
                     b.ToTable("TrackScores", (string)null);
                 });
@@ -230,6 +290,14 @@ namespace OfficeJukebox.Infrastructure.Persistence.Migrations
                             b1.Property<Guid>("TrackPlayId")
                                 .HasColumnType("TEXT");
 
+                            b1.Property<string>("ArtistsJson")
+                                .IsRequired()
+                                .HasMaxLength(2048)
+                                .HasColumnType("TEXT");
+
+                            b1.Property<long>("DurationMilliseconds")
+                                .HasColumnType("INTEGER");
+
                             b1.Property<string>("Link")
                                 .IsRequired()
                                 .HasMaxLength(1024)
@@ -238,6 +306,10 @@ namespace OfficeJukebox.Infrastructure.Persistence.Migrations
                             b1.Property<string>("Name")
                                 .IsRequired()
                                 .HasMaxLength(512)
+                                .HasColumnType("TEXT");
+
+                            b1.Property<string>("TrackArtworkUrl")
+                                .HasMaxLength(1024)
                                 .HasColumnType("TEXT");
 
                             b1.HasKey("TrackPlayId");

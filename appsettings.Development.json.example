@@ -23,6 +23,9 @@
   "Api": {
     "NotifyBaseUrl": "http://localhost:5080"
   },
+  "Admin": {
+    "Password": "change-me"
+  },
   "MusicProviders": {
     "WebAppUrl": "http://localhost:5173",
     "Spotify": {
@@ -37,7 +40,7 @@
       "DeveloperToken": ""
     },
     "YouTube": {
-      "Enabled": false,
+      "Enabled": true,
       "ApiKey": ""
     },
     "Manual": {

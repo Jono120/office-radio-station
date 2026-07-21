@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using OfficeJukebox.Application.Abstractions.Music;
 using OfficeJukebox.Infrastructure.Music;
 using OfficeJukebox.Infrastructure.Music.AppleMusic;
@@ -20,33 +21,44 @@ public static class DependencyInjection
         services.AddDataProtection();
         services.AddHttpClient("spotify");
         services.AddHttpClient("spotify-auth");
+        services.AddHttpClient("youtube");
 
         services.AddScoped<IProviderTokenService, ProviderTokenService>();
         services.AddScoped<IProviderAuthService, SpotifyAuthService>();
-        services.AddSingleton<ManualCatalogProvider>();
+        services.AddScoped<ManualCatalogProvider>();
         services.AddScoped<SpotifyCatalogProvider>();
         services.AddSingleton<AppleMusicCatalogProvider>();
-        services.AddSingleton<YouTubeCatalogProvider>();
+        services.AddScoped<YouTubeCatalogProvider>();
 
-        services.AddSingleton<IMusicCatalogProvider>(sp => sp.GetRequiredService<ManualCatalogProvider>());
-        services.AddSingleton<IMusicCatalogProvider>(sp =>
-        {
-            var options = configuration.GetSection(MusicProvidersOptions.SectionName).Get<MusicProvidersOptions>() ?? new();
-            return options.Spotify.Enabled ? sp.GetRequiredService<SpotifyCatalogProvider>() : new DisabledCatalogProvider("spotify");
-        });
-        services.AddSingleton<IMusicCatalogProvider>(sp =>
-        {
-            var options = configuration.GetSection(MusicProvidersOptions.SectionName).Get<MusicProvidersOptions>() ?? new();
-            return options.AppleMusic.Enabled ? sp.GetRequiredService<AppleMusicCatalogProvider>() : new DisabledCatalogProvider("apple-music");
-        });
-        services.AddSingleton<IMusicCatalogProvider>(sp =>
-        {
-            var options = configuration.GetSection(MusicProvidersOptions.SectionName).Get<MusicProvidersOptions>() ?? new();
-            return options.YouTube.Enabled ? sp.GetRequiredService<YouTubeCatalogProvider>() : new DisabledCatalogProvider("youtube");
-        });
+        services.AddScoped<IMusicCatalogProvider, ManualCatalogProvider>();
+        services.AddScoped<IMusicCatalogProvider>(sp => ResolveProvider(
+            sp,
+            "spotify",
+            () => sp.GetRequiredService<SpotifyCatalogProvider>(),
+            options => options.Spotify.Enabled));
+        services.AddScoped<IMusicCatalogProvider>(sp => ResolveProvider(
+            sp,
+            "apple-music",
+            () => sp.GetRequiredService<AppleMusicCatalogProvider>(),
+            options => options.AppleMusic.Enabled));
+        services.AddScoped<IMusicCatalogProvider>(sp => ResolveProvider(
+            sp,
+            "youtube",
+            () => sp.GetRequiredService<YouTubeCatalogProvider>(),
+            options => options.YouTube.Enabled));
 
-        services.AddSingleton<IMusicProviderRegistry, MusicProviderRegistry>();
+        services.AddScoped<IMusicProviderRegistry, MusicProviderRegistry>();
         return services;
+    }
+
+    private static IMusicCatalogProvider ResolveProvider(
+        IServiceProvider serviceProvider,
+        string providerId,
+        Func<IMusicCatalogProvider> enabledFactory,
+        Func<MusicProvidersOptions, bool> isEnabled)
+    {
+        var options = serviceProvider.GetRequiredService<IOptions<MusicProvidersOptions>>().Value;
+        return isEnabled(options) ? enabledFactory() : new DisabledCatalogProvider(providerId);
     }
 }
 

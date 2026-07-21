@@ -1,10 +1,10 @@
 # OfficeJukebox
 
-Greenfield office jukebox built on .NET 8, SQLite (EF Core), and React. Supports multiple music providers (Spotify, Apple Music, YouTube) with shared-device playback.
+Greenfield office jukebox built on .NET 10, SQLite (EF Core), and React. Supports multiple music providers (Spotify, Apple Music, YouTube) with shared-device playback.
 
 ## Prerequisites
 
-- [.NET 8 SDK](https://dotnet.microsoft.com/download)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download)
 - [Node.js 20+](https://nodejs.org/) (for the web UI)
 
 ## Build
@@ -78,18 +78,57 @@ Copy `appsettings.Development.json.example` to both `OfficeJukebox.Api/appsettin
     "ClientSecret": "your-client-secret",
     "RedirectUri": "http://localhost:5080/api/providers/spotify/callback"
   }
+},
+"Admin": {
+  "Password": "change-me"
 }
 ```
 
 ### 3. Connect and pick a device
 
 1. Run Api, Player, and Web (see **Run locally** above).
-2. Open the Web UI → **Providers** → **Connect** on Spotify and approve access.
-3. Open Spotify on your office speaker, computer, or phone (Spotify Connect).
-4. Click **Devices** → **Use** on the target playback device.
-5. Search and queue tracks — playback runs on the selected Connect device.
+2. Open the Web UI → **Admin** → sign in with the password from `Admin:Password` in your API config.
+3. Connect Spotify (and other providers) from the admin settings page and approve access.
+4. Open Spotify on your office speaker, computer, or phone (Spotify Connect).
+5. In admin settings, click **Devices** → **Use** on the target playback device.
+6. Return to the jukebox and search/queue tracks — playback runs on the selected Connect device.
 
 Tokens are stored encrypted in SQLite and refreshed automatically.
+
+## YouTube connection
+
+OfficeJukebox uses the [YouTube Data API v3](https://developers.google.com/youtube/v3) for search and queue metadata. YouTube does not support device playback through this app — queued tracks include a link you can open on a speaker or cast device.
+
+### 1. Create a Google Cloud API key
+
+1. Sign in to the [Google Cloud Console](https://console.cloud.google.com/).
+2. Create or select a project.
+3. Enable **YouTube Data API v3** (APIs & Services → Library).
+4. Create an API key (APIs & Services → Credentials → Create credentials → API key).
+5. Restrict the key to YouTube Data API v3 if desired.
+
+### 2. Configure the API key
+
+In both `OfficeJukebox.Api/appsettings.Development.json` and `OfficeJukebox.Player/appsettings.Development.json`:
+
+```json
+"MusicProviders": {
+  "YouTube": {
+    "Enabled": true,
+    "ApiKey": "your-youtube-data-api-key"
+  }
+}
+```
+
+No OAuth or admin connect step is required — search works as soon as the API key is set.
+
+### 3. Search and queue
+
+1. Run Api, Player, and Web (see **Run locally** above).
+2. Open the jukebox page and select **YouTube** as the search provider.
+3. Search for tracks and add them to the queue.
+
+Queued YouTube tracks store metadata and a watch link. Playback on a shared office device requires opening the link or casting separately until a device integration is added.
 
 ## Architecture
 

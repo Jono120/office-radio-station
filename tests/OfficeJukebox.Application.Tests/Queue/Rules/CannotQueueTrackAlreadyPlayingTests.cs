@@ -1,8 +1,8 @@
 using OfficeJukebox.Application.Abstractions;
+using OfficeJukebox.Application.Playback;
 using OfficeJukebox.Application.Queue.Rules;
 using OfficeJukebox.Domain.Entities;
 using OfficeJukebox.Domain.ValueObjects;
-using Moq;
 
 namespace OfficeJukebox.Application.Tests.Queue.Rules;
 
@@ -25,9 +25,9 @@ public class CannotQueueTrackAlreadyPlayingTests
     [Fact]
     public void Can_queue_when_current_track_is_different()
     {
-        var musicPlayer = new Mock<IMusicPlayer>();
-        musicPlayer.Setup(m => m.CurrentlyPlayingTrack).Returns(_queuedTrack2);
-        var rule = new CannotQueueTrackAlreadyPlayingQueueRule(musicPlayer.Object, new TrackIdentityComparer());
+        var playbackState = new PlaybackRuntimeState();
+        playbackState.SetCurrentTrack(_queuedTrack2);
+        var rule = new CannotQueueTrackAlreadyPlayingQueueRule(playbackState, new TrackIdentityComparer());
 
         var result = rule.CannotQueue(_queuedTrack.Track, _trackRef1, "jimmi");
 
@@ -37,9 +37,9 @@ public class CannotQueueTrackAlreadyPlayingTests
     [Fact]
     public void Cannot_queue_when_current_track_is_the_same()
     {
-        var musicPlayer = new Mock<IMusicPlayer>();
-        musicPlayer.Setup(m => m.CurrentlyPlayingTrack).Returns(_queuedTrack);
-        var rule = new CannotQueueTrackAlreadyPlayingQueueRule(musicPlayer.Object, new TrackIdentityComparer());
+        var playbackState = new PlaybackRuntimeState();
+        playbackState.SetCurrentTrack(_queuedTrack);
+        var rule = new CannotQueueTrackAlreadyPlayingQueueRule(playbackState, new TrackIdentityComparer());
 
         var result = rule.CannotQueue(_queuedTrack.Track, _trackRef1, "jimmi");
 
@@ -49,9 +49,9 @@ public class CannotQueueTrackAlreadyPlayingTests
     [Fact]
     public void Can_queue_when_same_album_but_different_track_name()
     {
-        var musicPlayer = new Mock<IMusicPlayer>();
-        musicPlayer.Setup(m => m.CurrentlyPlayingTrack).Returns(_queuedTrack3);
-        var rule = new CannotQueueTrackAlreadyPlayingQueueRule(musicPlayer.Object, new TrackIdentityComparer());
+        var playbackState = new PlaybackRuntimeState();
+        playbackState.SetCurrentTrack(_queuedTrack3);
+        var rule = new CannotQueueTrackAlreadyPlayingQueueRule(playbackState, new TrackIdentityComparer());
 
         var result = rule.CannotQueue(_queuedTrack.Track, _trackRef1, "jimmi");
 

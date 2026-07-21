@@ -1,11 +1,12 @@
 using OfficeJukebox.Application.Abstractions;
+using OfficeJukebox.Application.Playback;
 using OfficeJukebox.Domain.Entities;
 using OfficeJukebox.Domain.ValueObjects;
 
 namespace OfficeJukebox.Application.Queue.Rules;
 
 public sealed class CannotQueueTrackAlreadyPlayingQueueRule(
-    IMusicPlayer musicPlayer,
+    PlaybackRuntimeState playbackState,
     ITrackIdentityComparer identityComparer) : IQueueRule
 {
     public string CannotQueue(Track track, TrackRef trackRef, string user)
@@ -15,7 +16,7 @@ public sealed class CannotQueueTrackAlreadyPlayingQueueRule(
             return string.Empty;
         }
 
-        var current = musicPlayer.CurrentlyPlayingTrack;
+        var current = playbackState.CurrentlyPlayingTrack;
         if (current is null)
         {
             return string.Empty;

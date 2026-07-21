@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
+using OfficeJukebox.Api.Security;
 using OfficeJukebox.Api.Services;
 using OfficeJukebox.Application.Abstractions.Music;
 using OfficeJukebox.Contracts.Queue;
@@ -52,7 +53,48 @@ public sealed class SearchController(IMusicProviderRegistry registry) : Controll
             return track.Link.Split('/').LastOrDefault() ?? track.Name;
         }
 
+        if (provider.Equals("youtube", StringComparison.OrdinalIgnoreCase))
+        {
+            return ExtractYouTubeVideoId(track.Link) ?? track.Name;
+        }
+
         return track.Name;
+    }
+
+    private static string? ExtractYouTubeVideoId(string link)
+    {
+        if (string.IsNullOrWhiteSpace(link))
+        {
+            return null;
+        }
+
+        if (!Uri.TryCreate(link, UriKind.Absolute, out var uri))
+        {
+            return null;
+        }
+
+        if (uri.Host.Contains("youtu.be", StringComparison.OrdinalIgnoreCase))
+        {
+            return uri.AbsolutePath.TrimStart('/');
+        }
+
+        if (!uri.Host.Contains("youtube.com", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var query = uri.Query.TrimStart('?');
+        foreach (var part in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var keyValue = part.Split('=', 2);
+            if (keyValue.Length == 2 &&
+                keyValue[0].Equals("v", StringComparison.OrdinalIgnoreCase))
+            {
+                return Uri.UnescapeDataString(keyValue[1]);
+            }
+        }
+
+        return null;
     }
 }
 
@@ -69,6 +111,7 @@ public sealed class PlaybackController(IPlayerClient playerClient) : ControllerB
     }
 
     [HttpGet("devices")]
+    [RequireAdmin]
     public async Task<IActionResult> GetDevices([FromQuery] string provider, CancellationToken cancellationToken)
     {
         var response = await playerClient.GetDevicesAsync(provider, cancellationToken);
@@ -82,6 +125,7 @@ public sealed class PlaybackController(IPlayerClient playerClient) : ControllerB
     }
 
     [HttpPut("device")]
+    [RequireAdmin]
     public async Task<IActionResult> SetDevice([FromBody] SetDeviceRequest request, CancellationToken cancellationToken)
     {
         var response = await playerClient.SetDeviceAsync(request, cancellationToken);
@@ -125,6 +169,7 @@ public sealed class ProvidersController(
     }
 
     [HttpGet("{providerId}/auth")]
+    [RequireAdmin]
     public IActionResult StartAuth(string providerId)
     {
         var auth = authServices.FirstOrDefault(a => a.ProviderId.Equals(providerId, StringComparison.OrdinalIgnoreCase));
@@ -154,21 +199,22 @@ public sealed class ProvidersController(
         CancellationToken cancellationToken)
     {
         var webAppUrl = musicOptions.Value.WebAppUrl ?? "http://localhost:5173";
+        var adminUrl = $"{webAppUrl.TrimEnd('/')}/admin";
 
         if (!string.IsNullOrWhiteSpace(error))
         {
-            return Redirect($"{webAppUrl}?provider={providerId}&auth=error&message={Uri.EscapeDataString(error)}");
+            return Redirect($"{adminUrl}?provider={providerId}&auth=error&message={Uri.EscapeDataString(error)}");
         }
 
         if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(state))
         {
-            return Redirect($"{webAppUrl}?provider={providerId}&auth=error&message=missing_code");
+            return Redirect($"{adminUrl}?provider={providerId}&auth=error&message=missing_code");
         }
 
         var expected = HttpContext.Session.GetString($"oauth_state_{providerId}");
         if (string.IsNullOrWhiteSpace(expected) || expected != state)
         {
-            return Redirect($"{webAppUrl}?provider={providerId}&auth=error&message=invalid_state");
+            return Redirect($"{adminUrl}?provider={providerId}&auth=error&message=invalid_state");
         }
 
         var auth = authServices.FirstOrDefault(a => a.ProviderId.Equals(providerId, StringComparison.OrdinalIgnoreCase));
@@ -188,15 +234,16 @@ public sealed class ProvidersController(
                 expiresAt,
                 tokens.Scope,
                 cancellationToken);
-            return Redirect($"{webAppUrl}?provider={providerId}&auth=success");
+            return Redirect($"{adminUrl}?provider={providerId}&auth=success");
         }
         catch (Exception ex)
         {
-            return Redirect($"{webAppUrl}?provider={providerId}&auth=error&message={Uri.EscapeDataString(ex.Message)}");
+            return Redirect($"{adminUrl}?provider={providerId}&auth=error&message={Uri.EscapeDataString(ex.Message)}");
         }
     }
 
     [HttpDelete("{providerId}/connection")]
+    [RequireAdmin]
     public async Task<IActionResult> Disconnect(string providerId, CancellationToken cancellationToken)
     {
         var auth = authServices.FirstOrDefault(a => a.ProviderId.Equals(providerId, StringComparison.OrdinalIgnoreCase));
