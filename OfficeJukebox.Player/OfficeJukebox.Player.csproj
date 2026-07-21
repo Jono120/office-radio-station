@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <PackageReference Include="Serilog.AspNetCore" />
+    <PackageReference Include="Serilog.Sinks.Console" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\OfficeJukebox.Application\OfficeJukebox.Application.csproj" />
+    <ProjectReference Include="..\OfficeJukebox.Contracts\OfficeJukebox.Contracts.csproj" />
+    <ProjectReference Include="..\OfficeJukebox.Infrastructure\OfficeJukebox.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

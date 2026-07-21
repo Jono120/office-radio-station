@@ -1,0 +1,11 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Http" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\OfficeJukebox.Application\OfficeJukebox.Application.csproj" />
+    <ProjectReference Include="..\OfficeJukebox.Infrastructure.Persistence\OfficeJukebox.Infrastructure.Persistence.csproj" />
+  </ItemGroup>
+</Project>

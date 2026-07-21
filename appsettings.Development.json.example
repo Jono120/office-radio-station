@@ -1,0 +1,49 @@
+{
+  "Storage": {
+    "Provider": "Sqlite",
+    "ConnectionString": "Data Source=%LOCALAPPDATA%/OfficeJukebox/jukebox.db"
+  },
+  "Organization": {
+    "Name": "Your Organization",
+    "Domain": "YOURDOMAIN"
+  },
+  "QueueRules": {
+    "MaxTracksPerUser": 5,
+    "DontRepeatHours": 4
+  },
+  "VetoRules": {
+    "DailyLimit": 20
+  },
+  "SkipRules": {
+    "MinimumVetoCount": 3
+  },
+  "Player": {
+    "BaseUrl": "http://localhost:5050"
+  },
+  "Api": {
+    "NotifyBaseUrl": "http://localhost:5080"
+  },
+  "MusicProviders": {
+    "Spotify": {
+      "Enabled": true,
+      "ClientId": "",
+      "ClientSecret": "",
+      "RedirectUri": "http://localhost:5080/api/providers/spotify/callback",
+      "PreferredDeviceId": ""
+    },
+    "AppleMusic": {
+      "Enabled": false,
+      "DeveloperToken": ""
+    },
+    "YouTube": {
+      "Enabled": false,
+      "ApiKey": ""
+    },
+    "Manual": {
+      "Enabled": true
+    }
+  },
+  "Serilog": {
+    "MinimumLevel": "Information"
+  }
+}
