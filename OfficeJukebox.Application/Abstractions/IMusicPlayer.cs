@@ -12,6 +12,10 @@ public interface IMusicPlayer
 public interface IPlaybackOrchestrator : IMusicPlayer
 {
     Task StartAsync(CancellationToken cancellationToken = default);
-    Task SkipCurrentAsync(string user, CancellationToken cancellationToken = default);
-    Task VetoCurrentAsync(string user, CancellationToken cancellationToken = default);
+
+    /// <summary>Skips the identified track (currently playing or still queued). Returns false when no such track exists.</summary>
+    Task<bool> SkipAsync(Guid trackPlayId, string user, CancellationToken cancellationToken = default);
+
+    /// <summary>Records a veto against the identified track (currently playing or still queued). Returns false when no such track exists.</summary>
+    Task<bool> VetoAsync(Guid trackPlayId, string user, CancellationToken cancellationToken = default);
 }

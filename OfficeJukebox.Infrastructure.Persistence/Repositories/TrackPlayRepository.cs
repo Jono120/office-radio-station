@@ -23,15 +23,23 @@ public sealed class TrackPlayRepository(JukeboxDbContext dbContext) : ITrackPlay
         await dbContext.TrackPlays.AddAsync(trackPlay, cancellationToken);
     }
 
+    // New vetoes must be inserted explicitly: the owning TrackPlay graph is a
+    // detached instance held in memory across requests, and Update() would
+    // mark a new child with a client-generated key as Modified (0-row UPDATE).
+    public async Task AddVetoAsync(TrackPlayVeto veto, CancellationToken cancellationToken = default)
+    {
+        await dbContext.TrackPlayVetoes.AddAsync(veto, cancellationToken);
+    }
+
     public Task UpdateAsync(TrackPlay trackPlay, CancellationToken cancellationToken = default)
     {
         dbContext.TrackPlays.Update(trackPlay);
         return Task.CompletedTask;
     }
 
-    public async Task<IReadOnlyList<TrackPlay>> GetQueuedAsync(CancellationToken cancellationToken = default) =>
+    public async Task<IReadOnlyList<TrackPlay>> GetByStatusAsync(TrackPlayStatus status, CancellationToken cancellationToken = default) =>
         await dbContext.TrackPlays
-            .Where(t => t.Status == TrackPlayStatus.Queued)
+            .Where(t => t.Status == status)
             .OrderBy(t => t.Id)
             .ToListAsync(cancellationToken);
 

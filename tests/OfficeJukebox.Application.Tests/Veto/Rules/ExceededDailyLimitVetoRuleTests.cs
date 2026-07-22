@@ -57,8 +57,11 @@ public class ExceededDailyLimitVetoRuleTests
 
     private ExceededDailyLimitVetoRule CreateRule(Mock<ITrackPlayRepository> repository, int dailyLimit)
     {
+        // Office zone pinned to UTC so office-local dates equal the UTC
+        // StartedAt values used in the test fixtures.
         var timeProvider = new Mock<ITimeProvider>();
-        timeProvider.Setup(t => t.Now).Returns(_today);
+        timeProvider.Setup(t => t.OfficeNow).Returns(_today);
+        timeProvider.Setup(t => t.OfficeTimeZone).Returns(TimeZoneInfo.Utc);
         return new ExceededDailyLimitVetoRule(
             repository.Object,
             Options.Create(new VetoRulesOptions { DailyLimit = dailyLimit }),

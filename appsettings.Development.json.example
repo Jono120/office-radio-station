@@ -5,7 +5,8 @@
   },
   "Organization": {
     "Name": "Your Organization",
-    "Domain": "YOURDOMAIN"
+    "Domain": "YOURDOMAIN",
+    "TimeZone": "New Zealand Standard Time"
   },
   "QueueRules": {
     "MaxTracksPerUser": 5,

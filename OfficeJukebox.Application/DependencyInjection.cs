@@ -34,6 +34,7 @@ public static class DependencyInjection
         services.AddSingleton<ISkipRule, DefaultSkipRule>();
         services.AddSingleton<ISkipRule, OutOfHoursSkipRule>();
 
+        services.AddOptions<OrganizationOptions>().BindConfiguration(OrganizationOptions.SectionName);
         services.AddOptions<QueueRulesOptions>().BindConfiguration(QueueRulesOptions.SectionName);
         services.AddOptions<VetoRulesOptions>().BindConfiguration(VetoRulesOptions.SectionName);
         services.AddOptions<SkipRulesOptions>().BindConfiguration(SkipRulesOptions.SectionName);

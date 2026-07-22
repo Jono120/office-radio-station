@@ -42,8 +42,10 @@ public class OutOfHoursSkipRuleTests
 
     private static OutOfHoursSkipRule CreateRule(DateTime now)
     {
+        // Office hours are evaluated against OfficeNow (the admin-configured
+        // office wall clock), so that's what the test controls.
         var timeProvider = new Mock<ITimeProvider>();
-        timeProvider.Setup(t => t.Now).Returns(now);
+        timeProvider.Setup(t => t.OfficeNow).Returns(now);
         return new OutOfHoursSkipRule(timeProvider.Object);
     }
 }

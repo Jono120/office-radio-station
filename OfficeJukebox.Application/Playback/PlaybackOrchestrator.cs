@@ -23,6 +23,7 @@ public sealed class PlaybackOrchestrator(
     IQueueNotifier queueNotifier,
     ISkipHelper skipHelper,
     IEnumerable<IVetoRule> vetoRules,
+    ITimeProvider timeProvider,
     ILogger<PlaybackOrchestrator> logger) : IPlaybackOrchestrator
 {
     public TrackPlay? CurrentlyPlayingTrack => runtimeState.CurrentlyPlayingTrack;
@@ -31,66 +32,101 @@ public sealed class PlaybackOrchestrator(
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
-        await PlayNextIfIdleAsync(cancellationToken);
+        using var _ = await runtimeState.LockAsync(cancellationToken);
+        await PlayNextIfIdleCoreAsync(cancellationToken);
     }
 
-    public async Task SkipCurrentAsync(string user, CancellationToken cancellationToken = default)
+    public async Task<bool> SkipAsync(Guid trackPlayId, string user, CancellationToken cancellationToken = default)
     {
+        using var _ = await runtimeState.LockAsync(cancellationToken);
+
         var current = runtimeState.GetCurrentTrack();
-        if (current is null)
+        if (current is not null && current.Id == trackPlayId)
         {
-            return;
+            EnsureSkipThresholdMet(current);
+
+            current.IsSkipped = true;
+            current.Status = TrackPlayStatus.Skipped;
+            await trackPlayRepository.UpdateAsync(current, cancellationToken);
+            await trackPlayRepository.SaveChangesAsync(cancellationToken);
+
+            var playback = providerRegistry.GetPlayback(current.Provider);
+            if (playback?.Capabilities.HasFlag(ProviderCapabilities.DevicePlayback) == true)
+            {
+                await playback.SkipAsync(cancellationToken);
+            }
+
+            runtimeState.SetCurrentTrack(null);
+            await queueNotifier.NotifyNowPlayingChangedAsync(cancellationToken);
+            await PlayNextIfIdleCoreAsync(cancellationToken);
+            return true;
         }
 
-        if (current.VetoCount < skipHelper.RequiredVetoCount(current))
+        var queued = queueManager.Get(trackPlayId);
+        if (queued is null)
         {
-            throw new InvalidOperationException("Skip threshold not met.");
+            return false;
         }
 
-        current.IsSkipped = true;
-        current.Status = TrackPlayStatus.Skipped;
-        await trackPlayRepository.UpdateAsync(current, cancellationToken);
+        EnsureSkipThresholdMet(queued);
+
+        // Queued items never touched provider playback; marking them skipped is
+        // enough — QueueManager.Dequeue drops IsSkipped entries.
+        queued.IsSkipped = true;
+        queued.Status = TrackPlayStatus.Skipped;
+        await trackPlayRepository.UpdateAsync(queued, cancellationToken);
         await trackPlayRepository.SaveChangesAsync(cancellationToken);
-
-        var playback = providerRegistry.GetPlayback(current.Provider);
-        if (playback?.Capabilities.HasFlag(ProviderCapabilities.DevicePlayback) == true)
-        {
-            await playback.SkipAsync(cancellationToken);
-        }
-
-        runtimeState.SetCurrentTrack(null);
-        await queueNotifier.NotifyNowPlayingChangedAsync(cancellationToken);
-        await PlayNextIfIdleAsync(cancellationToken);
+        await queueNotifier.NotifyQueueChangedAsync(cancellationToken);
+        return true;
     }
 
-    public async Task VetoCurrentAsync(string user, CancellationToken cancellationToken = default)
+    public async Task<bool> VetoAsync(Guid trackPlayId, string user, CancellationToken cancellationToken = default)
     {
+        using var _ = await runtimeState.LockAsync(cancellationToken);
+
         var current = runtimeState.GetCurrentTrack();
-        if (current is null)
+        var target = current is not null && current.Id == trackPlayId
+            ? current
+            : queueManager.Get(trackPlayId);
+
+        if (target is null)
         {
-            return;
+            return false;
         }
 
         foreach (var rule in vetoRules)
         {
-            if (rule.CantVetoTrack(user, current))
+            if (rule.CantVetoTrack(user, target))
             {
                 throw new InvalidOperationException("Daily veto limit exceeded.");
             }
         }
 
-        current.Vetoes.Add(new TrackPlayVeto { ByUser = user, TrackPlayId = current.Id });
-        await trackPlayRepository.UpdateAsync(current, cancellationToken);
+        var veto = new TrackPlayVeto { ByUser = user, TrackPlayId = target.Id };
+        target.Vetoes.Add(veto); // keep the in-memory graph current for threshold checks
+        await trackPlayRepository.AddVetoAsync(veto, cancellationToken);
         await trackPlayRepository.SaveChangesAsync(cancellationToken);
-        await queueNotifier.NotifyNowPlayingChangedAsync(cancellationToken);
+
+        if (ReferenceEquals(target, current))
+        {
+            await queueNotifier.NotifyNowPlayingChangedAsync(cancellationToken);
+        }
+        else
+        {
+            await queueNotifier.NotifyQueueChangedAsync(cancellationToken);
+        }
+
+        return true;
     }
 
     public async Task PollAndAdvanceAsync(CancellationToken cancellationToken = default)
     {
+        using var _ = await runtimeState.LockAsync(cancellationToken);
+
         var current = runtimeState.GetCurrentTrack();
         if (current is null)
         {
-            await PlayNextIfIdleAsync(cancellationToken);
+            await PlayNextIfIdleCoreAsync(cancellationToken);
             return;
         }
 
@@ -107,16 +143,25 @@ public sealed class PlaybackOrchestrator(
         if (!state.IsPlaying && state.ProgressMs == 0 && state.CurrentTrack is null)
         {
             await CompleteCurrentAsync(current, cancellationToken);
-            await PlayNextIfIdleAsync(cancellationToken);
+            await PlayNextIfIdleCoreAsync(cancellationToken);
         }
         else if (!state.IsPlaying && state.DurationMs > 0 && state.ProgressMs >= state.DurationMs - 2000)
         {
             await CompleteCurrentAsync(current, cancellationToken);
-            await PlayNextIfIdleAsync(cancellationToken);
+            await PlayNextIfIdleCoreAsync(cancellationToken);
         }
     }
 
-    private async Task PlayNextIfIdleAsync(CancellationToken cancellationToken)
+    private void EnsureSkipThresholdMet(TrackPlay track)
+    {
+        if (track.VetoCount < skipHelper.RequiredVetoCount(track))
+        {
+            throw new InvalidOperationException("Skip threshold not met.");
+        }
+    }
+
+    /// <summary>Must be called while holding the runtime-state lock.</summary>
+    private async Task PlayNextIfIdleCoreAsync(CancellationToken cancellationToken)
     {
         if (runtimeState.GetCurrentTrack() is not null)
         {
@@ -131,7 +176,7 @@ public sealed class PlaybackOrchestrator(
 
         TrackJsonSerializer.HydrateTrack(next);
         next.Status = TrackPlayStatus.Playing;
-        next.StartedAt = DateTime.UtcNow;
+        next.StartedAt = timeProvider.UtcNow;
         await trackPlayRepository.UpdateAsync(next, cancellationToken);
         await trackPlayRepository.SaveChangesAsync(cancellationToken);
 

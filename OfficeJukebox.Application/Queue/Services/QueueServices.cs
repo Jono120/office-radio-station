@@ -117,7 +117,23 @@ public sealed class QueueBootstrapService(
 {
     public async Task LoadQueuedTracksAsync(CancellationToken cancellationToken = default)
     {
-        var queued = await trackPlayRepository.GetQueuedAsync(cancellationToken);
+        // Crash recovery: a track that was mid-play when the Player stopped is
+        // stranded in Playing status. Re-queue it ahead of everything else so
+        // it isn't silently lost on restart.
+        var stranded = await trackPlayRepository.GetByStatusAsync(TrackPlayStatus.Playing, cancellationToken);
+        foreach (var trackPlay in stranded)
+        {
+            trackPlay.Status = TrackPlayStatus.Queued;
+            trackPlay.StartedAt = null;
+            await trackPlayRepository.UpdateAsync(trackPlay, cancellationToken);
+        }
+
+        if (stranded.Count > 0)
+        {
+            await trackPlayRepository.SaveChangesAsync(cancellationToken);
+        }
+
+        var queued = await trackPlayRepository.GetByStatusAsync(TrackPlayStatus.Queued, cancellationToken);
         foreach (var trackPlay in queued.OrderBy(t => t.Id))
         {
             TrackJsonSerializer.HydrateTrack(trackPlay);

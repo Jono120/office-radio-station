@@ -28,24 +28,22 @@ Goal: a plain `dotnet run` of Api + Player + `npm run dev` works end to end. No 
 
 ---
 
-## Phase 2 — Correctness criticals
+## Phase 2 — Correctness criticals ✅ COMPLETE (22 Jul 2026)
 
-5. **Unify time handling on UTC** (`SystemTimeProvider`, rules, orchestrator)
-   - Change `ITimeProvider` to expose `UtcNow` (or replace it with .NET's built-in abstract `TimeProvider`, which the tests can fake — one abstraction fewer to maintain).
-   - All persisted timestamps and rule comparisons (`CannotQueueTrackThatHasPlayedInTheLastXHours`, `ExceededDailyLimitVetoRule`) work in UTC. `PlaybackOrchestrator` must use the provider, not raw `DateTime.UtcNow`, so rules and writes can never diverge again.
-   - `OutOfHoursSkipRule` genuinely needs local office hours: convert from UTC using a configured office time zone (new `QueueRules`-style option, default to the machine zone).
-   - Update the three test files that construct `DateTime.Now` values.
+5. ✅ **Unify time handling on UTC, time frames in the office time zone** (`SystemTimeProvider`, rules, orchestrator)
+   - `ITimeProvider` now exposes `UtcNow` plus `OfficeTimeZone`/`OfficeNow`, backed by the new `Organization:TimeZone` setting (admin-set office location; machine zone when empty; invalid ids fail at startup).
+   - All persisted timestamps are UTC and `PlaybackOrchestrator` writes `StartedAt` through the provider. Duration windows (`CannotQueueTrackThatHasPlayedInTheLastXHours`, score staleness) compare in pure UTC; wall-clock time frames (`OutOfHoursSkipRule` office hours, `ExceededDailyLimitVetoRule` "today") evaluate in the office zone.
+   - The three test files that constructed `DateTime.Now` values were updated.
 
-6. **Make veto/skip honor the target track id** (`QueueEndpoints.cs`, `PlaybackOrchestrator`)
-   - Change orchestrator signatures to `VetoAsync(Guid trackPlayId, string user)` / `SkipAsync(Guid trackPlayId, string user)`.
-   - If the id matches the currently playing track, behave as today. If it refers to a queued item, veto/remove that item. If it matches nothing, return 404 from the endpoint.
-   - This also fixes the silent wrong-track veto; add a unit test for the mismatch case.
+6. ✅ **Make veto/skip honor the target track id** (`QueueEndpoints.cs`, `PlaybackOrchestrator`)
+   - Orchestrator signatures are now `VetoAsync(Guid, user)` / `SkipAsync(Guid, user)`: current track behaves as before, queued items are vetoed/skipped in place, unknown ids surface as 404 from the Player endpoints. Unit tests cover the mismatch and queued-item cases.
+   - Bonus fix found while smoke-testing: adding a veto via `Update()` on the cached (detached) track graph threw `DbUpdateConcurrencyException`; new vetoes are now inserted explicitly through `ITrackPlayRepository.AddVetoAsync`.
 
-7. **Eliminate the advancement race** (`PlaybackOrchestrator`, `PlaybackRuntimeState`)
-   - Add a single `SemaphoreSlim(1,1)` owned by `PlaybackRuntimeState` (singleton) and take it around the whole advance/skip critical sections (`PlayNextIfIdleAsync`, `SkipAsync`, `PollAndAdvanceAsync`'s complete-then-advance branch).
-   - Per-field locking inside `PlaybackRuntimeState` becomes redundant once the outer lock exists — remove it rather than stacking two locking schemes.
+7. ✅ **Eliminate the advancement race** (`PlaybackOrchestrator`, `PlaybackRuntimeState`)
+   - `PlaybackRuntimeState` owns a single `SemaphoreSlim(1,1)`; start/poll/skip/veto all run their whole critical section inside it, and the old per-field locks are removed. A 16-way concurrent-start test proves single dequeue.
+   - Added (found during Phase 1 verification): crash recovery in `QueueBootstrapService` — tracks stranded in `Playing` status by a shutdown are reset to `Queued` and re-queued at startup instead of silently lost. `GetQueuedAsync` generalized to `GetByStatusAsync`.
 
-**Verify:** existing tests plus new tests for UTC rules, id-mismatch veto, and a concurrency test that runs skip and poll advancement simultaneously.
+**Verify:** ✅ Done 22 Jul 2026 — 29/29 tests pass (6 new: id mismatch ×2, queued-item veto/skip, threshold, concurrency). Live smoke: veto-by-id 200, unknown id 404, stranded Phase-1 track recovered into the queue after restart.
 
 ---
 
@@ -127,7 +125,7 @@ Two new requirements land here because they build on Phase 3's auth work and Pha
 
 19. **Domain-email identity for queueing and voting** (Api, Player contracts, frontend)
     - Today identity is a self-chosen display name stored in localStorage and sent in request bodies — anyone can impersonate anyone, which also makes the per-user queue/veto rules unenforceable. This item replaces that honor system.
-    - Bind the `Organization` section (already present in the Player's `appsettings.json` but currently read by nothing — dead config found while planning this) to an `OrganizationOptions` class in the Api: `Name`, `Domain` (e.g. `contoso.com`).
+    - Bind the `Organization` section to an `OrganizationOptions` class in the Api: `Name`, `Domain` (e.g. `contoso.com`). *(Partially done in Phase 2: `OrganizationOptions` now exists in Application with `Name`/`Domain`/`TimeZone` and is bound where `AddApplication()` runs — the Api still needs its own binding when item 19 lands.)*
     - Add a sign-in endpoint (`POST /api/session`): the user submits their work email and a display name; the Api validates the email's domain against `Organization:Domain` (case-insensitive, exact suffix match on `@domain`) and stores the identity in the same cookie session infrastructure the admin login already uses. Add `GET /api/session` for the frontend to restore state and `DELETE /api/session` to sign out.
     - Gate the write endpoints — queue a track, veto, skip, like — on that session, and derive `User` **server-side** from the session instead of trusting the request body. Remove the `User` field from the client-facing request contracts (the Api fills it in before proxying to the Player). Read-only endpoints (queue, now-playing, search) stay open to the LAN so a wall display doesn't need a login.
     - Frontend: replace the free-text username field on the profile page with the sign-in flow (email + display name), source `useProfile` from `GET /api/session`, and surface a sign-in prompt when a write returns 401.

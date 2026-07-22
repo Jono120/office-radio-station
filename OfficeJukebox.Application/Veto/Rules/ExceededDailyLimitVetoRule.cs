@@ -14,8 +14,17 @@ public sealed class ExceededDailyLimitVetoRule(
     public bool CantVetoTrack(string vetoedByUser, TrackPlay track)
     {
         var dailyLimit = options.Value.DailyLimit;
+
+        // "Today" is the office-local day (Organization:TimeZone). Compute its
+        // start as a UTC instant so the comparison against UTC StartedAt stays
+        // translatable to SQL.
+        var officeToday = timeProvider.OfficeNow.Date;
+        var dayStartUtc = TimeZoneInfo.ConvertTimeToUtc(
+            DateTime.SpecifyKind(officeToday, DateTimeKind.Unspecified),
+            timeProvider.OfficeTimeZone);
+
         var vetoCount = trackPlayRepository.GetAll()
-            .Count(q => q.StartedAt > timeProvider.Now.Date &&
+            .Count(q => q.StartedAt >= dayStartUtc &&
                         q.Vetoes.Any(v => v.ByUser == vetoedByUser));
 
         return vetoCount >= dailyLimit;

@@ -14,7 +14,9 @@ public sealed class OutOfHoursSkipRule(ITimeProvider timeProvider) : ISkipRule
 
     private bool IsOutOfHours()
     {
-        var now = timeProvider.Now;
+        // Office hours are wall-clock at the admin-configured office location
+        // (Organization:TimeZone), not the server's zone and not UTC.
+        var now = timeProvider.OfficeNow;
         return now.Hour >= 18
                || now.Hour < 8
                || now.DayOfWeek == DayOfWeek.Saturday

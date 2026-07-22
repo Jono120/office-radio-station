@@ -29,7 +29,7 @@ public class CannotQueueTrackThatHasPlayedInTheLastXHoursTests
     [Fact]
     public void Track_played_over_repeat_window_can_be_queued_again()
     {
-        _trackPlay.StartedAt = DateTime.Now.AddHours(-4).AddMinutes(-1);
+        _trackPlay.StartedAt = DateTime.UtcNow.AddHours(-4).AddMinutes(-1);
         var repository = CreateRepository(_trackPlay);
         var rule = CreateRule(repository, hours: 4);
 
@@ -41,7 +41,7 @@ public class CannotQueueTrackThatHasPlayedInTheLastXHoursTests
     [Fact]
     public void Track_played_within_repeat_window_cannot_be_queued()
     {
-        _trackPlay.StartedAt = DateTime.Now.AddHours(-3).AddMinutes(-59);
+        _trackPlay.StartedAt = DateTime.UtcNow.AddHours(-3).AddMinutes(-59);
         var repository = CreateRepository(_trackPlay);
         var rule = CreateRule(repository, hours: 4);
 
@@ -55,7 +55,7 @@ public class CannotQueueTrackThatHasPlayedInTheLastXHoursTests
         int hours)
     {
         var timeProvider = new Mock<ITimeProvider>();
-        timeProvider.Setup(t => t.Now).Returns(DateTime.Now);
+        timeProvider.Setup(t => t.UtcNow).Returns(DateTime.UtcNow);
         return new CannotQueueTrackThatHasPlayedInTheLastXHoursQueueRule(
             repository.Object,
             new TrackIdentityComparer(),

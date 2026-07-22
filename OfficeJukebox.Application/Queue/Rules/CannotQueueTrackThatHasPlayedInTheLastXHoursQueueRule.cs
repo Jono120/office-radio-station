@@ -21,7 +21,9 @@ public sealed class CannotQueueTrackThatHasPlayedInTheLastXHoursQueueRule(
         }
 
         var hours = options.Value.DontRepeatHours;
-        var cutoff = timeProvider.Now.AddHours(-hours);
+        // Duration-based window: pure UTC, no office-zone conversion needed
+        // because StartedAt is persisted in UTC.
+        var cutoff = timeProvider.UtcNow.AddHours(-hours);
         var hasRecentPlay = trackPlayRepository.GetAll()
             .AsEnumerable()
             .Any(q =>

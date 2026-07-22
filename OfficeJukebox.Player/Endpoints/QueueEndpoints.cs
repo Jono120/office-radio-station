@@ -56,8 +56,9 @@ public static class QueueEndpoints
         {
             try
             {
-                await orchestrator.VetoCurrentAsync(request.User, cancellationToken);
-                return Results.Ok();
+                return await orchestrator.VetoAsync(id, request.User, cancellationToken)
+                    ? Results.Ok()
+                    : Results.NotFound(new { error = "Track is not playing or queued." });
             }
             catch (InvalidOperationException ex)
             {
@@ -73,8 +74,9 @@ public static class QueueEndpoints
         {
             try
             {
-                await orchestrator.SkipCurrentAsync(request.User, cancellationToken);
-                return Results.Ok();
+                return await orchestrator.SkipAsync(id, request.User, cancellationToken)
+                    ? Results.Ok()
+                    : Results.NotFound(new { error = "Track is not playing or queued." });
             }
             catch (InvalidOperationException ex)
             {

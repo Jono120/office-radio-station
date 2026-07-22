@@ -22,7 +22,8 @@ public sealed class TrackScoreService(
     public async Task<IReadOnlyList<TrackScore>> ComputeScoresAsync(CancellationToken cancellationToken = default)
     {
         var aggregates = new Dictionary<string, ScoreAggregate>(StringComparer.OrdinalIgnoreCase);
-        var now = timeProvider.Now;
+        // UTC: compared against UTC StartedAt values and persisted as ComputedAt.
+        var now = timeProvider.UtcNow;
 
         foreach (var play in trackPlayRepository.GetAll())
         {
