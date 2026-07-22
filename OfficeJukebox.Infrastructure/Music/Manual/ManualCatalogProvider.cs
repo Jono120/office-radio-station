@@ -8,9 +8,12 @@ public sealed class ManualCatalogProvider : IMusicCatalogProvider
 {
     public string ProviderId => "manual";
     public ProviderCapabilities Capabilities => ProviderCapabilities.Resolve;
+    public string? SetupUrl => null;
 
-    public Task<IReadOnlyList<Track>> SearchAsync(string query, int limit, CancellationToken cancellationToken = default) =>
-        Task.FromResult<IReadOnlyList<Track>>([]);
+    public Task<IReadOnlyList<CatalogSearchResult>> SearchAsync(string query, int limit, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<CatalogSearchResult>>([]);
+
+    public Task<bool> IsReadyAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
 
     public Task<Track> ResolveAsync(TrackRef trackRef, CancellationToken cancellationToken = default)
     {

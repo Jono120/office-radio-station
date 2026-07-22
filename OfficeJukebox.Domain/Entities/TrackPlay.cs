@@ -6,7 +6,6 @@ public sealed class TrackPlay : Entity
     public DateTime QueuedAt { get; set; } = DateTime.UtcNow;
     public DateTime? StartedAt { get; set; }
     public bool Excluded { get; set; }
-    public bool IsSkipped { get; set; }
     public string? Reason { get; set; }
     public string TrackJson { get; set; } = string.Empty;
     public string Provider { get; set; } = string.Empty;

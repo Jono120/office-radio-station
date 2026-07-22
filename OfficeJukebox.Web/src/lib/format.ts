@@ -5,14 +5,3 @@ export function formatMs(ms?: number) {
   const seconds = total % 60
   return `${minutes}:${seconds.toString().padStart(2, '0')}`
 }
-
-export function queueStatusVariant(status: string): 'default' | 'secondary' | 'outline' {
-  switch (status.toLowerCase()) {
-    case 'playing':
-      return 'default'
-    case 'queued':
-      return 'secondary'
-    default:
-      return 'outline'
-  }
-}

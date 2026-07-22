@@ -9,10 +9,6 @@ public sealed class JukeboxDbContext(DbContextOptions<JukeboxDbContext> options)
     public DbSet<TrackPlayVeto> TrackPlayVetoes => Set<TrackPlayVeto>();
     public DbSet<TrackPlayLike> TrackPlayLikes => Set<TrackPlayLike>();
     public DbSet<TrackScore> TrackScores => Set<TrackScore>();
-    public DbSet<SearchTerm> SearchTerms => Set<SearchTerm>();
-    public DbSet<AdminUser> AdminUsers => Set<AdminUser>();
-    public DbSet<RickRollTarget> RickRollTargets => Set<RickRollTarget>();
-    public DbSet<SoundBoardEvent> SoundBoardEvents => Set<SoundBoardEvent>();
     public DbSet<ProviderCredential> ProviderCredentials => Set<ProviderCredential>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -75,32 +71,5 @@ public sealed class JukeboxDbContext(DbContextOptions<JukeboxDbContext> options)
             entity.HasIndex(e => e.Provider).IsUnique();
         });
 
-        modelBuilder.Entity<SearchTerm>(entity =>
-        {
-            entity.ToTable("SearchTerms");
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Term).IsRequired().HasMaxLength(256);
-        });
-
-        modelBuilder.Entity<AdminUser>(entity =>
-        {
-            entity.ToTable("AdminUsers");
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Username).IsRequired().HasMaxLength(128);
-        });
-
-        modelBuilder.Entity<RickRollTarget>(entity =>
-        {
-            entity.ToTable("RickRollTargets");
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Username).IsRequired().HasMaxLength(128);
-        });
-
-        modelBuilder.Entity<SoundBoardEvent>(entity =>
-        {
-            entity.ToTable("SoundBoardEvents");
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Name).IsRequired().HasMaxLength(256);
-        });
     }
 }

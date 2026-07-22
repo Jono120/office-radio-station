@@ -45,7 +45,6 @@ public sealed class PlaybackOrchestrator(
         {
             EnsureSkipThresholdMet(current);
 
-            current.IsSkipped = true;
             current.Status = TrackPlayStatus.Skipped;
             await trackPlayRepository.UpdateAsync(current, cancellationToken);
             await trackPlayRepository.SaveChangesAsync(cancellationToken);
@@ -70,9 +69,8 @@ public sealed class PlaybackOrchestrator(
 
         EnsureSkipThresholdMet(queued);
 
-        // Queued items never touched provider playback; marking them skipped is
-        // enough — QueueManager.Dequeue drops IsSkipped entries.
-        queued.IsSkipped = true;
+        // Queued items never touched provider playback; marking them Skipped is
+        // enough — QueueManager.Dequeue drops entries with Skipped status.
         queued.Status = TrackPlayStatus.Skipped;
         await trackPlayRepository.UpdateAsync(queued, cancellationToken);
         await trackPlayRepository.SaveChangesAsync(cancellationToken);
@@ -102,7 +100,7 @@ public sealed class PlaybackOrchestrator(
             }
         }
 
-        var veto = new TrackPlayVeto { ByUser = user, TrackPlayId = target.Id };
+        var veto = new TrackPlayVeto { ByUser = user, TrackPlayId = target.Id, VetoedAt = timeProvider.UtcNow };
         target.Vetoes.Add(veto); // keep the in-memory graph current for threshold checks
         await trackPlayRepository.AddVetoAsync(veto, cancellationToken);
         await trackPlayRepository.SaveChangesAsync(cancellationToken);

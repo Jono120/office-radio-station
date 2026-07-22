@@ -29,72 +29,23 @@ public sealed class SearchController(IMusicProviderRegistry registry) : Controll
 
         try
         {
+            // Results carry the provider-native external id, so no URL
+            // heuristics are needed here anymore.
             var results = await catalog.SearchAsync(q, limit, cancellationToken);
-            var items = results.Select(t => new SearchResultItem(
+            var items = results.Select(r => new SearchResultItem(
                 provider,
-                ExtractExternalId(provider, t),
-                t.Name,
-                t.Album?.Name,
-                t.TrackArtworkUrl,
-                t.DurationMilliseconds,
-                t.Link)).ToList();
+                r.ExternalId,
+                r.Track.Name,
+                r.Track.Album?.Name,
+                r.Track.TrackArtworkUrl,
+                r.Track.DurationMilliseconds,
+                r.Track.Link)).ToList();
             return Ok(items);
         }
         catch (InvalidOperationException ex)
         {
             return StatusCode(StatusCodes.Status401Unauthorized, new { error = ex.Message });
         }
-    }
-
-    private static string ExtractExternalId(string provider, Domain.Entities.Track track)
-    {
-        if (provider.Equals("spotify", StringComparison.OrdinalIgnoreCase) && track.Link.Contains("/track/", StringComparison.Ordinal))
-        {
-            return track.Link.Split('/').LastOrDefault() ?? track.Name;
-        }
-
-        if (provider.Equals("youtube", StringComparison.OrdinalIgnoreCase))
-        {
-            return ExtractYouTubeVideoId(track.Link) ?? track.Name;
-        }
-
-        return track.Name;
-    }
-
-    private static string? ExtractYouTubeVideoId(string link)
-    {
-        if (string.IsNullOrWhiteSpace(link))
-        {
-            return null;
-        }
-
-        if (!Uri.TryCreate(link, UriKind.Absolute, out var uri))
-        {
-            return null;
-        }
-
-        if (uri.Host.Contains("youtu.be", StringComparison.OrdinalIgnoreCase))
-        {
-            return uri.AbsolutePath.TrimStart('/');
-        }
-
-        if (!uri.Host.Contains("youtube.com", StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
-
-        var query = uri.Query.TrimStart('?');
-        foreach (var part in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
-        {
-            var keyValue = part.Split('=', 2);
-            if (keyValue.Length == 2 &&
-                keyValue[0].Equals("v", StringComparison.OrdinalIgnoreCase))
-            {
-                return Uri.UnescapeDataString(keyValue[1]);
-            }
-        }
-
-        return null;
     }
 }
 
@@ -103,40 +54,18 @@ public sealed class SearchController(IMusicProviderRegistry registry) : Controll
 public sealed class PlaybackController(IPlayerClient playerClient) : ControllerBase
 {
     [HttpGet("now-playing")]
-    public async Task<IActionResult> GetNowPlaying(CancellationToken cancellationToken)
-    {
-        var response = await playerClient.GetNowPlayingAsync(cancellationToken);
-        var content = await response.Content.ReadAsStringAsync(cancellationToken);
-        return Content(content, "application/json");
-    }
+    public Task<IActionResult> GetNowPlaying(CancellationToken cancellationToken) =>
+        playerClient.GetNowPlayingAsync(cancellationToken).ProxyAsync(cancellationToken);
 
     [HttpGet("devices")]
     [RequireAdmin]
-    public async Task<IActionResult> GetDevices([FromQuery] string provider, CancellationToken cancellationToken)
-    {
-        var response = await playerClient.GetDevicesAsync(provider, cancellationToken);
-        var content = await response.Content.ReadAsStringAsync(cancellationToken);
-        return new ContentResult
-        {
-            StatusCode = (int)response.StatusCode,
-            Content = content,
-            ContentType = "application/json"
-        };
-    }
+    public Task<IActionResult> GetDevices([FromQuery] string provider, CancellationToken cancellationToken) =>
+        playerClient.GetDevicesAsync(provider, cancellationToken).ProxyAsync(cancellationToken);
 
     [HttpPut("device")]
     [RequireAdmin]
-    public async Task<IActionResult> SetDevice([FromBody] SetDeviceRequest request, CancellationToken cancellationToken)
-    {
-        var response = await playerClient.SetDeviceAsync(request, cancellationToken);
-        var content = await response.Content.ReadAsStringAsync(cancellationToken);
-        return new ContentResult
-        {
-            StatusCode = (int)response.StatusCode,
-            Content = content,
-            ContentType = "application/json"
-        };
-    }
+    public Task<IActionResult> SetDevice([FromBody] SetDeviceRequest request, CancellationToken cancellationToken) =>
+        playerClient.SetDeviceAsync(request, cancellationToken).ProxyAsync(cancellationToken);
 }
 
 [ApiController]
@@ -150,11 +79,13 @@ public sealed class ProvidersController(
     [HttpGet]
     public async Task<IActionResult> List(CancellationToken cancellationToken)
     {
-        var providers = registry.ListEnabled();
         var responses = new List<ProviderInfoResponse>();
-        foreach (var provider in providers)
+        foreach (var provider in registry.ListEnabled())
         {
-            var authenticated = await IsProviderReadyAsync(provider, cancellationToken);
+            // Each provider owns its readiness rules (tokens, API keys, …);
+            // no provider-id special cases here.
+            var catalog = registry.GetCatalog(provider.Id);
+            var authenticated = catalog is not null && await catalog.IsReadyAsync(cancellationToken);
             responses.Add(new ProviderInfoResponse(
                 provider.Id,
                 provider.DisplayName,
@@ -170,32 +101,13 @@ public sealed class ProvidersController(
     [RequireAdmin]
     public IActionResult GetConnectUrl(string providerId)
     {
-        if (providerId.Equals("youtube", StringComparison.OrdinalIgnoreCase))
-        {
-            return Ok(new ProviderConnectUrlResponse("https://console.cloud.google.com/apis/credentials"));
-        }
-
-        if (providerId.Equals("spotify", StringComparison.OrdinalIgnoreCase))
-        {
-            return Ok(new ProviderConnectUrlResponse("https://developer.spotify.com/dashboard"));
-        }
-
-        var auth = authServices.FirstOrDefault(a => a.ProviderId.Equals(providerId, StringComparison.OrdinalIgnoreCase));
-        if (auth is null)
+        var catalog = registry.GetCatalog(providerId);
+        if (catalog?.SetupUrl is not { } setupUrl)
         {
             return NotFound();
         }
 
-        try
-        {
-            var state = Guid.NewGuid().ToString("N");
-            HttpContext.Session.SetString($"oauth_state_{providerId}", state);
-            return Ok(new ProviderConnectUrlResponse(auth.BuildAuthorizationUrl(state)));
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
+        return Ok(new ProviderConnectUrlResponse(setupUrl));
     }
 
     [HttpPut("{providerId}/connection")]
@@ -218,24 +130,17 @@ public sealed class ProvidersController(
 
         var connectionString = request.ConnectionString.Trim();
 
-        if (providerId.Equals("spotify", StringComparison.OrdinalIgnoreCase))
+        // Providers with an OAuth auth service accept a refresh token as their
+        // connection string: redeem it immediately so the stored credential is
+        // a live access token, not the raw paste.
+        var auth = FindAuthService(providerId);
+        if (auth is not null)
         {
-            var auth = authServices.FirstOrDefault(a => a.ProviderId.Equals(providerId, StringComparison.OrdinalIgnoreCase));
-            if (auth is not null)
+            var refreshed = await auth.RefreshAccessTokenAsync(connectionString, cancellationToken);
+            if (refreshed is not null)
             {
-                var refreshed = await auth.RefreshAccessTokenAsync(connectionString, cancellationToken);
-                if (refreshed is not null)
-                {
-                    var expiresAt = DateTime.UtcNow.AddSeconds(refreshed.ExpiresIn);
-                    await tokenService.StoreTokensAsync(
-                        providerId,
-                        refreshed.AccessToken,
-                        refreshed.RefreshToken ?? connectionString,
-                        expiresAt,
-                        refreshed.Scope,
-                        cancellationToken);
-                    return Ok(new { provider = providerId, authenticated = true });
-                }
+                await tokenService.StoreTokensAsync(providerId, refreshed, fallbackRefreshToken: connectionString, cancellationToken);
+                return Ok(new { provider = providerId, authenticated = true });
             }
         }
 
@@ -247,7 +152,7 @@ public sealed class ProvidersController(
     [RequireAdmin]
     public IActionResult StartAuth(string providerId)
     {
-        var auth = authServices.FirstOrDefault(a => a.ProviderId.Equals(providerId, StringComparison.OrdinalIgnoreCase));
+        var auth = FindAuthService(providerId);
         if (auth is null)
         {
             return NotFound();
@@ -292,7 +197,7 @@ public sealed class ProvidersController(
             return Redirect($"{adminUrl}?provider={providerId}&auth=error&message=invalid_state");
         }
 
-        var auth = authServices.FirstOrDefault(a => a.ProviderId.Equals(providerId, StringComparison.OrdinalIgnoreCase));
+        var auth = FindAuthService(providerId);
         if (auth is null)
         {
             return NotFound();
@@ -301,14 +206,7 @@ public sealed class ProvidersController(
         try
         {
             var tokens = await auth.CompleteAuthorizationAsync(code, cancellationToken);
-            var expiresAt = DateTime.UtcNow.AddSeconds(tokens.ExpiresIn);
-            await tokenService.StoreTokensAsync(
-                providerId,
-                tokens.AccessToken,
-                tokens.RefreshToken,
-                expiresAt,
-                tokens.Scope,
-                cancellationToken);
+            await tokenService.StoreTokensAsync(providerId, tokens, fallbackRefreshToken: null, cancellationToken);
             return Redirect($"{adminUrl}?provider={providerId}&auth=success");
         }
         catch (Exception ex)
@@ -331,25 +229,8 @@ public sealed class ProvidersController(
         return Ok(new { provider = providerId, authenticated = false });
     }
 
-    private async Task<bool> IsProviderReadyAsync(Application.Abstractions.Music.ProviderInfo provider, CancellationToken cancellationToken)
-    {
-        if (provider.Capabilities.HasFlag(ProviderCapabilities.RequiresAuth))
-        {
-            return await tokenService.IsAuthenticatedAsync(provider.Id, cancellationToken);
-        }
-
-        if (provider.Id.Equals("youtube", StringComparison.OrdinalIgnoreCase))
-        {
-            if (await tokenService.IsAuthenticatedAsync(provider.Id, cancellationToken))
-            {
-                return true;
-            }
-
-            return !string.IsNullOrWhiteSpace(musicOptions.Value.YouTube.ApiKey);
-        }
-
-        return true;
-    }
+    private IProviderAuthService? FindAuthService(string providerId) =>
+        authServices.FirstOrDefault(a => a.ProviderId.Equals(providerId, StringComparison.OrdinalIgnoreCase));
 
     private static string[] CapabilitiesToArray(ProviderCapabilities capabilities) =>
         Enum.GetValues<ProviderCapabilities>()

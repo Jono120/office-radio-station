@@ -72,44 +72,45 @@ Goal: a plain `dotnet run` of Api + Player + `npm run dev` works end to end. No 
 
 ---
 
-## Phase 4 — Redundancy removal and dead code (the condensing pass)
+## Phase 4 — Redundancy removal and dead code (the condensing pass) ✅ COMPLETE (22 Jul 2026, branch `phase-4-redundancy-removal`)
 
 ### Frontend
 
-12. **Delete the abandoned UI stack** (`OfficeJukebox.Web`)
-    - Remove `src/components/ui/`, `src/components/kibo-ui/`, `src/index.css`, `components.json`, and the `@tailwindcss/vite` plugin from `vite.config.ts`.
-    - Drop the dependencies that exist only for it: `tailwindcss`, `@tailwindcss/vite`, `tailwind-merge`, `tw-animate-css`, `class-variance-authority`, `lucide-react`, `@base-ui/react`, `@radix-ui/react-use-controllable-state`, `clsx` (`lib/utils.ts` goes with it), plus `@dnd-kit/*`, `motion`, and `react-medium-image-zoom` if a usage search confirms they're unreferenced.
-    - Remove dead helpers `use-theme` and `queueStatusVariant`; this also disposes of the `StatusIndicator` className bug.
-    - Wire the veto/skip helpers in `lib/api.ts` into the queue UI (they become meaningful once Phase 2 item 6 lands) or delete them.
-    - Return a cleanup function from every SignalR `useEffect` (`connection.off(...)`) so StrictMode doesn't double-register handlers, and refetch only on the matching event.
+12. ✅ **Delete the abandoned UI stack** (`OfficeJukebox.Web`)
+    - Removed `src/components/ui/`, `src/components/kibo-ui/`, `src/index.css`, `lib/utils.ts`, `use-theme.ts`, and the `@tailwindcss/vite` plugin from `vite.config.ts` (no `components.json` existed). `postcss.config.js` stays — it belongs to reshaped.
+    - Dropped 11 dependencies: `tailwindcss`, `@tailwindcss/vite`, `tailwind-merge`, `tw-animate-css`, `class-variance-authority`, `clsx`, `@base-ui/react`, `@radix-ui/react-use-controllable-state`, `@dnd-kit/core`, `@dnd-kit/modifiers`, `motion`, `react-medium-image-zoom`. `lucide-react` stays — live pages import its icons directly.
+    - Removed `queueStatusVariant`; the `StatusIndicator` bug went with the kibo-ui deletion.
+    - The veto/skip helpers referenced by the audit no longer existed in `lib/api.ts` (only `apiFetch` remained) — nothing to wire or delete.
+    - SignalR `useEffect` now detaches its three handlers via `connection.off(...)` in the cleanup, so StrictMode can't double-register.
 
 ### Api
 
-13. **One proxy helper instead of six copies** (`QueueController`, `PlaybackController`)
-    - Every action repeats read-content + build `ContentResult`. Extract a single `ProxyAsync(Task<HttpResponseMessage>)` helper (controller base or extension).
-    - This also fixes a latent bug: `GetQueue` and `GetNowPlaying` use `Content(...)`, which always returns 200 even when the Player errored, while the other four propagate the status code.
-    - Type `IPlayerClient` with the `OfficeJukebox.Contracts` request records instead of `object` so the Api↔Player contract is compiler-checked.
+13. ✅ **One proxy helper instead of six copies** (`PlayerProxy.ProxyAsync` extension)
+    - All seven proxying actions (queue ×4, playback ×3) funnel through one `ProxyAsync` extension on `Task<HttpResponseMessage>` — status code and body always propagate, fixing the `GetQueue`/`GetNowPlaying` always-200 bug.
+    - `IPlayerClient` is now typed with the Contracts records (`QueueTrackRequest`, `VetoRequest`, `SkipRequest`, `SetDeviceRequest`) instead of `object`.
 
-14. **Consolidate provider OAuth plumbing** (`ProvidersController`, `ProviderTokenService`)
-    - `GetConnectUrl` and `StartAuth` duplicate the state-generation/session/build-URL block — extract one private helper; the two endpoints likely collapse into one (the frontend only needs one of them — check usage and delete the other).
-    - The "compute `expiresAt` then `StoreTokensAsync`" block appears three times (`SaveConnection`, `Callback`, `ProviderTokenService.GetAccessTokenAsync`). Add `StoreTokensAsync(string providerId, TokenRefreshResult tokens)` to `IProviderTokenService` and compute the expiry in one place.
-    - Replace the hardcoded `"spotify"`/`"youtube"` string checks (connect URLs, SaveConnection special case, `IsProviderReadyAsync`) with metadata on the provider abstraction (e.g. `DashboardUrl`, `SupportsApiKeyFallback`) so adding a provider doesn't require editing the controller.
+14. ✅ **Consolidate provider OAuth plumbing** (`ProvidersController`, `ProviderTokenService`)
+    - `StoreTokensAsync` now takes a `TokenRefreshResult` and computes the expiry internally (with a `fallbackRefreshToken` parameter for exchanges that don't return one) — the three copies of the expiry arithmetic collapsed into it.
+    - `GetConnectUrl`'s duplicated OAuth-state block was unreachable (Spotify/YouTube early-returned before it) and is deleted; `StartAuth` remains the single OAuth entry point, and `connect-url` now serves `IMusicProvider.SetupUrl` metadata.
+    - Hardcoded provider-id checks are gone: dashboard URLs live on `IMusicProvider.SetupUrl`, readiness on `IMusicCatalogProvider.IsReadyAsync()` (YouTube's checks stored key then config `ApiKey`), and the SaveConnection refresh-token path applies to any provider with an auth service rather than string-matching "spotify".
 
-15. **Move external-id extraction into the providers** (`SearchController`)
-    - The controller parses Spotify/YouTube URLs to recover an external id (`ExtractExternalId`/`ExtractYouTubeVideoId`, ~50 lines). Providers already know their ids — have `SearchAsync` results carry `ExternalId` (extend the search result model) and delete the heuristics.
+15. ✅ **Move external-id extraction into the providers** (`SearchController`)
+    - `SearchAsync` now returns `CatalogSearchResult(ExternalId, Track)` — Spotify and YouTube surface the native id they already had at map time; the ~50 lines of URL-parsing heuristics in the controller are deleted.
 
 ### Application / Domain / Persistence
 
-16. **Delete orphaned and stub code**
-    - Entities `AdminUser`, `RickRollTarget`, `SoundBoardEvent`, `SearchTerm`: unmapped by any feature — remove entities, `DbSet`s, and add one cleanup migration. (If any are planned features, note it in the plan doc and keep the entity out of the DbContext until built.)
+16. ✅ **Delete orphaned and stub code**
+    - `AdminUser`, `RickRollTarget`, `SoundBoardEvent`, `SearchTerm` removed (entities, `DbSet`s, model config) with cleanup migration `RemoveOrphanedEntitiesAndIsSkipped` (applied; TrackPlays data preserved through SQLite's table rebuild).
     - ✅ Apple Music: removed in Phase 3 alongside the provider-enablement fix (item 10).
-    - Remove `IMusicPlaybackController.PauseAsync`/`ResumeAsync` (no endpoint calls them) and `IMusicProviderRegistry.GetAllCatalogProviders()` (no callers), plus their provider implementations.
-    - `TrackPlay` keeps both `IsSkipped` and `Status = Skipped` — redundant duplicated state; keep `Status` and derive/drop `IsSkipped`.
+    - `IMusicPlaybackController.PauseAsync`/`ResumeAsync` and `IMusicProviderRegistry.GetAllCatalogProviders()` removed with their implementations.
+    - `IsSkipped` dropped from `TrackPlay` (same migration); `Status == Skipped` is the single source, checked by `QueueManager.Dequeue`.
 
-17. **Small logic fixes**
-    - `TrackScoreService`: `AutoPlayCount += isAutoplay ? 0 : 1` is inverted and neither counter affects the score — either fix the increment _and_ use the counts in scoring, or delete both fields. Recommendation: fix the increment (`isAutoplay ? 1 : 0`) and keep the data; it's cheap and useful for future scoring.
-    - `ExceededDailyLimitVetoRule`: count vetoes by `TrackPlayVeto.VetoedAt` date, not the track's `StartedAt`.
-    - `QueueManager.Dequeue`: replace recursive self-call with a `while` loop.
+17. ✅ **Small logic fixes**
+    - `TrackScoreService`: `AutoPlayCount` increment fixed to `isAutoplay ? 1 : 0` (data kept for future scoring). Orchestrator vetoes also stamp `VetoedAt` through `ITimeProvider` now.
+    - `ExceededDailyLimitVetoRule`: counts by `TrackPlayVeto.VetoedAt` within the office-local day — a veto cast today on yesterday's track consumes today's allowance (new regression test).
+    - `QueueManager.Dequeue`: iterative `while` loop replaces the recursion.
+
+**Verify:** ✅ Done 22 Jul 2026 — backend build clean, 32/32 tests pass (new: veto-today-on-yesterday's-track). Frontend: `tsc -b` + `vite build` clean, `oxlint` clean, `depcheck` reports no unused dependencies. Cleanup migration applied on Player startup. Live smoke: queue/now-playing/providers 200, enqueue 201, veto with unknown id propagates the Player's 404 through the proxy, web app serves and proxies on 5173. All work is on branch `phase-4-redundancy-removal`, uncommitted (manual commits per workflow).
 
 ---
 
