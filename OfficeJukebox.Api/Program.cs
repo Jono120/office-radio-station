@@ -1,6 +1,8 @@
 using OfficeJukebox.Api.Hubs;
 using OfficeJukebox.Api.Options;
+using OfficeJukebox.Api.Security;
 using OfficeJukebox.Api.Services;
+using OfficeJukebox.Application.Configuration;
 using OfficeJukebox.Infrastructure;
 using OfficeJukebox.Infrastructure.Persistence;
 using Serilog;
@@ -47,6 +49,12 @@ builder.Services.AddCors(options =>
 });
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.Configure<AdminOptions>(builder.Configuration.GetSection(AdminOptions.SectionName));
+builder.Services.Configure<OrganizationOptions>(builder.Configuration.GetSection(OrganizationOptions.SectionName));
+
+// Item 18: parse the LAN allowlist at startup so a CIDR typo fails loudly.
+var allowedNetworks = LanAllowlist.Parse(
+    builder.Configuration.GetSection("Security:AllowedNetworks").Get<string[]>()
+    ?? LanAllowlist.DefaultNetworks);
 
 var internalSecret = builder.Configuration["Security:InternalSharedSecret"];
 if (string.IsNullOrWhiteSpace(internalSecret))
@@ -77,6 +85,21 @@ using (var scope = app.Services.CreateScope())
             "and start OfficeJukebox.Player at least once first — it creates and migrates the database.");
     }
 }
+
+// First middleware in the pipeline so it also covers the SignalR hub, Swagger,
+// and health endpoints: only loopback and Security:AllowedNetworks may talk to
+// the Api at all. Trusts only the socket address — never X-Forwarded-For.
+app.Use(async (context, next) =>
+{
+    if (!LanAllowlist.IsAllowed(context.Connection.RemoteIpAddress, allowedNetworks))
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        await context.Response.WriteAsJsonAsync(new { error = "OfficeJukebox is only available on the office network." });
+        return;
+    }
+
+    await next();
+});
 
 if (app.Environment.IsDevelopment())
 {

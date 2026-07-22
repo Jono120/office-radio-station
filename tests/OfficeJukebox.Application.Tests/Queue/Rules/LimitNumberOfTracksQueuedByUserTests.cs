@@ -57,6 +57,27 @@ public class LimitNumberOfTracksQueuedByUserTests
         Assert.NotEqual(string.Empty, result);
     }
 
+    [Fact]
+    public void Limit_keys_off_the_canonical_email_not_a_display_name()
+    {
+        // Impersonation case (plan item 20): identity is the session-derived
+        // email. Two people can pick the same display name, but their emails
+        // differ, so one user's full queue never blocks the other.
+        var fullQueue = Enumerable.Range(1, 5)
+            .Select(i => new TrackPlay
+            {
+                User = "jane.smith@corp.example",
+                Track = new Track { Name = $"Track {i}" }
+            });
+        var queueManager = CreateQueueManager(fullQueue);
+        var rule = CreateRule(queueManager, 5);
+
+        Assert.NotEqual(string.Empty,
+            rule.CannotQueue(new Track(), new TrackRef("manual", "new"), "jane.smith@corp.example"));
+        Assert.Equal(string.Empty,
+            rule.CannotQueue(new Track(), new TrackRef("manual", "new"), "jane.smith@partner.example"));
+    }
+
     private static LimitNumberOfTracksQueuedByUserQueueRule CreateRule(Mock<IQueueManager> queueManager, int max) =>
         new(queueManager.Object, Options.Create(new QueueRulesOptions { MaxTracksPerUser = max }));
 

@@ -1,5 +1,22 @@
 namespace OfficeJukebox.Contracts.Queue;
 
+/// <summary>
+/// What the web client sends to the Api. Deliberately has no User field —
+/// identity comes from the caller's session, never the request body, so users
+/// cannot impersonate each other.
+/// </summary>
+public sealed record QueueTrackClientRequest(
+    string Provider,
+    string ExternalId,
+    string? TrackName,
+    string? AlbumName,
+    string? ExternalLink,
+    string? Reason);
+
+/// <summary>
+/// The Api → Player wire shape. User is the session-derived canonical email,
+/// filled in by the Api before proxying.
+/// </summary>
 public sealed record QueueTrackRequest(
     string User,
     string Provider,
@@ -20,6 +37,8 @@ public sealed record QueueItemResponse(
     string? Reason,
     string Status);
 
+// Api → Player wire shapes: the client sends no body for veto/skip; the Api
+// fills User from the caller's session.
 public sealed record VetoRequest(string User);
 
 public sealed record SkipRequest(string User);
