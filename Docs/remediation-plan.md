@@ -114,28 +114,25 @@ Goal: a plain `dotnet run` of Api + Player + `npm run dev` works end to end. No 
 
 ---
 
-## Phase 5 — Network access control and user identity
+## Phase 5 — Network access control and user identity ✅ COMPLETE (23 Jul 2026, branch `phase-5-access-control`)
 
 Two new requirements land here because they build on Phase 3's auth work and Phase 4's cleanup of the request payloads.
 
-18. **Network access control — localhost for prototyping, config-only path to LAN/hosting** (Api)
-    - Prototype/demo stance (current): keep the Api bound to `localhost:5080`. The whole demo runs on one device, which naturally mimics the restricted-network setup — nothing else can reach it.
-    - Still ship the access-control middleware now (registered before routing so it also covers the SignalR hub and static assets): reject any request whose `RemoteIpAddress` is not loopback or inside an allowed CIDR list from a new `Security:AllowedNetworks` section, defaulting to loopback + the RFC 1918 private ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`). On localhost every request arrives via loopback, so the demo exercises the exact enforcement path that will guard the LAN later — the check is real, not stubbed.
-    - Later rollout is configuration only, no code changes:
-      - **LAN phase:** change `Urls` to `http://0.0.0.0:5080` and (optionally) pin `Security:AllowedNetworks` to the office subnet.
-      - **Hosted phase:** the CIDR allowlist stops being the right control once traffic goes through the host's edge; at that point front the app with the hosting provider's access controls and set `AllowedNetworks` to the proxy's addresses, using ASP.NET's forwarded-headers middleware with `KnownProxies` set. Do **not** trust `X-Forwarded-For` before then — otherwise the check is spoofable.
-    - The Player keeps its `localhost` binding in every phase — only the Api ever talks to it, so it should never be network-visible (this complements the shared-secret auth from item 9).
+18. ✅ **Network access control — localhost for prototyping, config-only path to LAN/hosting** (Api)
+    - The Api stays bound to `localhost:5080` for the demo, and the enforcement middleware ships now: `LanAllowlist` (Api/Security) is the **first** middleware in the pipeline — before Swagger, CORS, session, controllers, and the SignalR hub — and rejects with 403 any request whose `Connection.RemoteIpAddress` is not loopback or inside `Security:AllowedNetworks` (committed default: the three RFC 1918 ranges). CIDRs are parsed at startup via `IPNetwork.TryParse`, so a config typo fails the boot loudly; IPv4-mapped IPv6 addresses are unmapped before matching.
+    - Only the socket address is consulted — `X-Forwarded-For` is deliberately ignored, as planned. The rollout path is unchanged: LAN = rebind `Urls` to `0.0.0.0:5080` (± pin the office subnet); hosted = provider edge controls + forwarded-headers with `KnownProxies` first.
+    - The Player keeps its `localhost` binding (plus the item 9 shared secret).
 
-19. **Domain-email identity for queueing and voting** (Api, Player contracts, frontend)
-    - Today identity is a self-chosen display name stored in localStorage and sent in request bodies — anyone can impersonate anyone, which also makes the per-user queue/veto rules unenforceable. This item replaces that honor system.
-    - Bind the `Organization` section to an `OrganizationOptions` class in the Api: `Name`, `Domain` (e.g. `contoso.com`). *(Partially done in Phase 2: `OrganizationOptions` now exists in Application with `Name`/`Domain`/`TimeZone` and is bound where `AddApplication()` runs — the Api still needs its own binding when item 19 lands.)*
-    - Add a sign-in endpoint (`POST /api/session`): the user submits their work email and a display name; the Api validates the email's domain against `Organization:Domain` (case-insensitive, exact suffix match on `@domain`) and stores the identity in the same cookie session infrastructure the admin login already uses. Add `GET /api/session` for the frontend to restore state and `DELETE /api/session` to sign out.
-    - Gate the write endpoints — queue a track, veto, skip, like — on that session, and derive `User` **server-side** from the session instead of trusting the request body. Remove the `User` field from the client-facing request contracts (the Api fills it in before proxying to the Player). Read-only endpoints (queue, now-playing, search) stay open to the LAN so a wall display doesn't need a login.
-    - Frontend: replace the free-text username field on the profile page with the sign-in flow (email + display name), source `useProfile` from `GET /api/session`, and surface a sign-in prompt when a write returns 401.
-    - Scope note: this validates the email's domain, it does not verify mailbox ownership. Combined with LAN-only access that is a reasonable bar for an office jukebox. If real verification is wanted later, add a magic-link email step behind the same session mechanism — the endpoint surface doesn't change.
+19. ✅ **Domain-email identity for queueing and voting** (Api, Player contracts, frontend)
+    - `OrganizationOptions` is now bound in the Api's `Program.cs` (the section was already in its `appsettings.json`).
+    - New `SessionController`: `POST /api/session` validates the email with `MailAddress.TryCreate` and requires its host to equal `Organization:Domain` (case-insensitive); on success it stores the **lowercased email** (canonical identity) and display name (defaults to the email's local part) in the same cookie session as the admin login. `GET /api/session` restores state (401 when signed out), `DELETE /api/session` signs out. Missing `Organization:Domain` → 503, mirroring the admin-password guard.
+    - Writes are gated by a new `RequireUserAttribute` (mirrors `RequireAdmin`) on queue/veto/skip ("like" from the plan text doesn't exist — there is no like endpoint). `QueueController` derives `User` from the session and fills it before proxying: the client-facing `QueueTrackClientRequest` has **no** `User` field, and veto/skip take no body at all — `VetoRequest`/`SkipRequest` are now Api→Player wire shapes only. Reads (queue, now-playing, search) and the SignalR hub stay open for wall displays.
+    - Frontend: `useProfile` is session-backed (GET/POST/DELETE `/api/session`) instead of localStorage; the profile page's free-text username is replaced by a work-email + display-name sign-in card (signed-in state shows the account with a sign-out button, and "Queue activity" matches on the session email); the jukebox page no longer sends `user` and shows "Sign in with your work email on the Profile page…" when queueing returns 401.
 
-20. **Follow-through on rules once identity is real**
-    - `LimitNumberOfTracksQueuedByUser` and the veto daily limit now key off the session-derived email instead of a spoofable display name — verify the rules compare the canonical identity (email), not the display name, and add a test for the impersonation case (same display name, different email).
+20. ✅ **Follow-through on rules once identity is real**
+    - The rules' `user` parameter is now always the session-derived lowercased email — the display name never reaches the Application layer, so it cannot influence `LimitNumberOfTracksQueuedByUser` or the veto daily limit. New impersonation regression test: with one user's queue full, the same track/name from a different email is not blocked, while the same email is.
+
+**Verify:** ✅ Done 23 Jul 2026 — build clean, 33/33 tests pass (new: impersonation case). Live smoke: anonymous enqueue/veto → 401, wrong-domain sign-in → 401, malformed email → 400, domain sign-in → 200 with lowercased email, session-derived enqueue 201 attributed to the email, bodyless veto 200, sign-out then veto → 401, reads and the web app (5173, proxied) stay open. The 403 path can't be triggered from loopback by design — the fake-`RemoteIpAddress` integration test remains a Phase 6 item. All work on branch `phase-5-access-control`, uncommitted (manual commits per workflow).
 
 ---
 

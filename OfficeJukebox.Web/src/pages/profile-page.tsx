@@ -23,10 +23,12 @@ function queueBadgeColor(status: string): 'positive' | 'primary' | 'neutral' {
 }
 
 export function ProfilePage() {
-  const { username, setUsername, initials } = useProfile()
-  const [draftUsername, setDraftUsername] = useState(username)
+  const { profile, isLoading, isSignedIn, initials, signIn, signOut } = useProfile()
+  const [draftEmail, setDraftEmail] = useState('')
+  const [draftDisplayName, setDraftDisplayName] = useState('')
   const [queue, setQueue] = useState<QueueItem[]>([])
-  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const refreshQueue = useCallback(async () => {
     const response = await apiFetch('/api/queue')
@@ -39,71 +41,102 @@ export function ProfilePage() {
     void refreshQueue()
   }, [refreshQueue])
 
-  useEffect(() => {
-    setDraftUsername(username)
-  }, [username])
+  const myQueueItems = profile
+    ? queue.filter((item) => item.user.toLowerCase() === profile.email.toLowerCase())
+    : []
 
-  const myQueueItems = queue.filter(
-    (item) => item.user.localeCompare(username, undefined, { sensitivity: 'accent' }) === 0,
-  )
-
-  const handleSave = (event: React.FormEvent) => {
+  const handleSignIn = async (event: React.FormEvent) => {
     event.preventDefault()
-    const trimmed = draftUsername.trim()
-    if (!trimmed) {
+    const email = draftEmail.trim()
+    if (!email) {
       return
     }
 
-    setUsername(trimmed)
-    setSaved(true)
-    window.setTimeout(() => setSaved(false), 2000)
+    setError(null)
+    setIsSubmitting(true)
+    try {
+      await signIn(email, draftDisplayName.trim())
+      setDraftEmail('')
+      setDraftDisplayName('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Sign-in failed.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <Text color="neutral-faded" variant="body-3">
+        Checking session…
+      </Text>
+    )
   }
 
   return (
     <SettingsSection
       title="Profile"
-      description="Manage your personal information and how you appear in the office queue."
+      description="Sign in with your work email to queue tracks and vote. Your identity is verified server-side."
     >
-      <SettingsGroup title="Profile picture" description="How teammates recognize you in the jukebox.">
-        <Card>
-          <View align="center" direction="row" gap={4}>
-            <Avatar initials={initials} size={16} />
-            <View gap={1}>
-              <Text variant="body-3" weight="medium">
-                {username}
-              </Text>
-              <Text color="neutral-faded" variant="body-3">
-                Tracks you queue are attributed to this name for everyone in the office.
-              </Text>
-            </View>
-          </View>
-        </Card>
-      </SettingsGroup>
-
-      <SettingsGroup title="Personal information" description="Update the name shown when you queue music.">
-        <Card padding={0}>
-          <form onSubmit={handleSave}>
-            <SettingsField description="Unique name used when adding tracks to the shared queue." label="User name">
-              <TextField
-                name="username"
-                onChange={({ value }) => setDraftUsername(value)}
-                placeholder="office-user"
-                value={draftUsername}
-              />
-            </SettingsField>
-            <View align="center" direction="row" gap={3} padding={4}>
-              <Button disabled={draftUsername.trim().length === 0} type="submit">
-                Save changes
+      {isSignedIn && profile ? (
+        <SettingsGroup title="Signed in" description="Tracks you queue and votes you cast are attributed to this account.">
+          <Card>
+            <View align="center" direction="row" gap={4} justify="space-between">
+              <View align="center" direction="row" gap={4}>
+                <Avatar initials={initials} size={16} />
+                <View gap={1}>
+                  <Text variant="body-3" weight="medium">
+                    {profile.displayName}
+                  </Text>
+                  <Text color="neutral-faded" variant="body-3">
+                    {profile.email}
+                  </Text>
+                </View>
+              </View>
+              <Button onClick={() => void signOut()} variant="outline">
+                Sign out
               </Button>
-              {saved ? (
-                <Text color="neutral-faded" variant="body-3">
-                  Profile updated.
-                </Text>
-              ) : null}
             </View>
-          </form>
-        </Card>
-      </SettingsGroup>
+          </Card>
+        </SettingsGroup>
+      ) : (
+        <SettingsGroup
+          title="Sign in"
+          description="Only company work emails are accepted. Queueing and voting are unavailable until you sign in."
+        >
+          <Card padding={0}>
+            <form onSubmit={handleSignIn}>
+              <SettingsField description="Your company email — the domain is validated." label="Work email">
+                <TextField
+                  inputAttributes={{ type: 'email' }}
+                  name="email"
+                  onChange={({ value }) => setDraftEmail(value)}
+                  placeholder="you@company.com"
+                  value={draftEmail}
+                />
+              </SettingsField>
+              <SettingsField description="Shown next to the tracks you queue (optional)." label="Display name">
+                <TextField
+                  name="displayName"
+                  onChange={({ value }) => setDraftDisplayName(value)}
+                  placeholder="Your name"
+                  value={draftDisplayName}
+                />
+              </SettingsField>
+              <View align="center" direction="row" gap={3} padding={4}>
+                <Button disabled={draftEmail.trim().length === 0 || isSubmitting} type="submit">
+                  Sign in
+                </Button>
+                {error ? (
+                  <Text color="critical" variant="body-3">
+                    {error}
+                  </Text>
+                ) : null}
+              </View>
+            </form>
+          </Card>
+        </SettingsGroup>
+      )}
 
       <SettingsGroup title="Theme" description="Choose how OfficeJukebox looks on this device.">
         <ThemeSelection />
@@ -112,9 +145,11 @@ export function ProfilePage() {
       <SettingsGroup
         title="Queue activity"
         description={
-          myQueueItems.length === 0
-            ? 'You have no tracks in the queue right now.'
-            : `${myQueueItems.length} track${myQueueItems.length === 1 ? '' : 's'} queued under your name.`
+          !isSignedIn
+            ? 'Sign in to see the tracks queued under your account.'
+            : myQueueItems.length === 0
+              ? 'You have no tracks in the queue right now.'
+              : `${myQueueItems.length} track${myQueueItems.length === 1 ? '' : 's'} queued under your account.`
         }
       >
         {myQueueItems.length === 0 ? (

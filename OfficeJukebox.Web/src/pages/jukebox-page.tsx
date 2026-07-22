@@ -14,7 +14,6 @@ import {
   View,
 } from 'reshaped'
 import { PlaybackQueueTable } from '@/components/playback-queue-table'
-import { useProfile } from '@/hooks/use-profile'
 import { apiFetch } from '@/lib/api'
 import { formatMs } from '@/lib/format'
 import { effectivePlaybackCount } from '@/lib/placeholder-tracks'
@@ -27,7 +26,6 @@ import {
 } from '@/lib/types'
 
 export function JukeboxPage() {
-  const { username } = useProfile()
   const [queue, setQueue] = useState<QueueItem[]>([])
   const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null)
   const [providers, setProviders] = useState<ProviderInfo[]>([])
@@ -129,11 +127,11 @@ export function JukeboxPage() {
 
   const queueTrack = async (result: SearchResult) => {
     setError(null)
+    // Identity comes from the session cookie; the request carries no user.
     const response = await apiFetch('/api/queue', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        user: username,
         provider: result.provider,
         externalId: result.externalId,
         trackName: result.name,
@@ -141,6 +139,10 @@ export function JukeboxPage() {
         externalLink: result.externalLink,
       }),
     })
+    if (response.status === 401) {
+      setError('Sign in with your work email on the Profile page before queueing tracks.')
+      return
+    }
     if (!response.ok) {
       const body = await response.json().catch(() => ({}))
       setError(body.errors?.join(', ') ?? body.error ?? 'Failed to queue track.')
