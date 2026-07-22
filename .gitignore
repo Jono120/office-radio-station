@@ -44,3 +44,6 @@ coverage/
 
 # Cursor
 .cursor/
+
+# Local test payloads / credentials
+login.json

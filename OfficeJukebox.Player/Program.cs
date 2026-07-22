@@ -17,7 +17,14 @@ builder.Host.UseSerilog((context, services, configuration) =>
 builder.Services.AddApplication();
 builder.Services.AddPlayback();
 builder.Services.AddInfrastructure(builder.Configuration);
-builder.Services.AddHttpClient("api-notifier");
+var notifyBaseUrl = builder.Configuration["Api:NotifyBaseUrl"];
+if (string.IsNullOrWhiteSpace(notifyBaseUrl))
+{
+    throw new InvalidOperationException(
+        "Api:NotifyBaseUrl is not configured. Set it to the OfficeJukebox.Api base URL (e.g. http://localhost:5080).");
+}
+
+builder.Services.AddHttpClient("api-notifier", client => client.BaseAddress = new Uri(notifyBaseUrl));
 builder.Services.AddSingleton<IQueueNotifier, HttpQueueNotifier>();
 
 var app = builder.Build();

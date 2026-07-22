@@ -3,6 +3,7 @@ using OfficeJukebox.Api.Options;
 using OfficeJukebox.Api.Services;
 using OfficeJukebox.Application.Abstractions;
 using OfficeJukebox.Infrastructure;
+using OfficeJukebox.Infrastructure.Persistence;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -55,6 +56,20 @@ builder.Services.AddHttpClient<IPlayerClient, PlayerClient>(client =>
 });
 
 var app = builder.Build();
+
+// The Player owns the database and runs migrations; the Api only reads/writes it.
+// Fail loudly on a misconfigured Storage section instead of silently creating an
+// empty database at a different path.
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<JukeboxDbContext>();
+    if (!await db.Database.CanConnectAsync())
+    {
+        throw new InvalidOperationException(
+            "Cannot reach the OfficeJukebox database. Check Storage:ConnectionString in appsettings, " +
+            "and start OfficeJukebox.Player at least once first — it creates and migrates the database.");
+    }
+}
 
 if (app.Environment.IsDevelopment())
 {
