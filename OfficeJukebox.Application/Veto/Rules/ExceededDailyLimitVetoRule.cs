@@ -23,9 +23,12 @@ public sealed class ExceededDailyLimitVetoRule(
             DateTime.SpecifyKind(officeToday, DateTimeKind.Unspecified),
             timeProvider.OfficeTimeZone);
 
+        // Count by when the veto was cast (VetoedAt), not when the vetoed
+        // track started playing — a veto cast today on yesterday's track
+        // still consumes today's allowance.
         var vetoCount = trackPlayRepository.GetAll()
-            .Count(q => q.StartedAt >= dayStartUtc &&
-                        q.Vetoes.Any(v => v.ByUser == vetoedByUser));
+            .SelectMany(q => q.Vetoes)
+            .Count(v => v.ByUser == vetoedByUser && v.VetoedAt >= dayStartUtc);
 
         return vetoCount >= dailyLimit;
     }

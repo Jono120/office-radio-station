@@ -85,17 +85,27 @@ export function JukeboxPage() {
   }, [refreshQueue, refreshNowPlaying, refreshProviders])
 
   useEffect(() => {
-    connection.on('QueueChanged', () => void refreshQueue())
-    connection.on('NowPlayingChanged', () => void refreshNowPlaying())
-    connection.on('PlaybackProgress', (payload: { progressMs: number; durationMs: number; isPlaying: boolean }) => {
+    const onQueueChanged = () => void refreshQueue()
+    const onNowPlayingChanged = () => void refreshNowPlaying()
+    const onPlaybackProgress = (payload: { progressMs: number; durationMs: number; isPlaying: boolean }) => {
       setNowPlaying((current) =>
         current
           ? { ...current, progressMs: payload.progressMs, durationMs: payload.durationMs, isPlaying: payload.isPlaying }
           : current,
       )
-    })
+    }
+
+    connection.on('QueueChanged', onQueueChanged)
+    connection.on('NowPlayingChanged', onNowPlayingChanged)
+    connection.on('PlaybackProgress', onPlaybackProgress)
     void connection.start()
+
+    // Detach handlers explicitly so React StrictMode's double-invoke (and any
+    // future re-run) never leaves duplicate registrations on the memoized connection.
     return () => {
+      connection.off('QueueChanged', onQueueChanged)
+      connection.off('NowPlayingChanged', onNowPlayingChanged)
+      connection.off('PlaybackProgress', onPlaybackProgress)
       void connection.stop()
     }
   }, [connection, refreshQueue, refreshNowPlaying])

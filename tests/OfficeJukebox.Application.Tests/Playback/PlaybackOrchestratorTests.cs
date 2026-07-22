@@ -74,7 +74,6 @@ public class PlaybackOrchestratorTests
         var result = await orchestrator.SkipAsync(queued.Id, "a user");
 
         Assert.True(result);
-        Assert.True(queued.IsSkipped);
         Assert.Equal(TrackPlayStatus.Skipped, queued.Status);
         Assert.Same(current, _runtimeState.GetCurrentTrack());
         Assert.Null(_queueManager.Dequeue()); // skipped items are dropped

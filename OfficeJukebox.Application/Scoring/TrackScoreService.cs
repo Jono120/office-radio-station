@@ -42,7 +42,7 @@ public sealed class TrackScoreService(
 
             var isAutoplay = play.User.StartsWith(AutoplayUserPrefix, StringComparison.OrdinalIgnoreCase);
             aggregate.RequestCount += isAutoplay ? 0 : 1;
-            aggregate.AutoPlayCount += isAutoplay ? 0 : 1;
+            aggregate.AutoPlayCount += isAutoplay ? 1 : 0;
             aggregate.VetoCount += play.Vetoes.Count;
             aggregate.LikeCount += play.Likes.Count;
             if (!aggregate.Excluded)

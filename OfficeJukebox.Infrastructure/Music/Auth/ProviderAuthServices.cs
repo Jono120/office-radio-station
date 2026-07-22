@@ -10,7 +10,15 @@ namespace OfficeJukebox.Infrastructure.Music.Auth;
 public interface IProviderTokenService
 {
     Task<string?> GetAccessTokenAsync(string provider, CancellationToken cancellationToken = default);
-    Task StoreTokensAsync(string provider, string accessToken, string? refreshToken, DateTime? expiresAt, string? scopes, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Persists an OAuth token exchange result. Expiry is computed here (UtcNow
+    /// + ExpiresIn) so no caller duplicates that arithmetic. When the exchange
+    /// did not return a refresh token, <paramref name="fallbackRefreshToken"/>
+    /// (e.g. the one that was just redeemed) is stored instead.
+    /// </summary>
+    Task StoreTokensAsync(string provider, TokenRefreshResult tokens, string? fallbackRefreshToken = null, CancellationToken cancellationToken = default);
+
     Task StoreConnectionStringAsync(string provider, string connectionString, CancellationToken cancellationToken = default);
     Task<bool> IsAuthenticatedAsync(string provider, CancellationToken cancellationToken = default);
     Task DisconnectAsync(string provider, CancellationToken cancellationToken = default);
@@ -67,26 +75,24 @@ public sealed class ProviderTokenService(
             return null;
         }
 
-        var expiresAt = DateTime.UtcNow.AddSeconds(refreshed.ExpiresIn);
-        await StoreTokensAsync(provider, refreshed.AccessToken, refreshed.RefreshToken ?? refreshToken, expiresAt, refreshed.Scope, cancellationToken);
+        await StoreTokensAsync(provider, refreshed, fallbackRefreshToken: refreshToken, cancellationToken);
         return refreshed.AccessToken;
     }
 
     public async Task StoreTokensAsync(
         string provider,
-        string accessToken,
-        string? refreshToken,
-        DateTime? expiresAt,
-        string? scopes,
+        TokenRefreshResult tokens,
+        string? fallbackRefreshToken = null,
         CancellationToken cancellationToken = default)
     {
+        var refreshToken = tokens.RefreshToken ?? fallbackRefreshToken;
         var credential = new ProviderCredential
         {
             Provider = provider,
-            EncryptedAccessToken = _protector.Protect(accessToken),
+            EncryptedAccessToken = _protector.Protect(tokens.AccessToken),
             EncryptedRefreshToken = refreshToken is null ? null : _protector.Protect(refreshToken),
-            ExpiresAt = expiresAt,
-            Scopes = scopes,
+            ExpiresAt = DateTime.UtcNow.AddSeconds(tokens.ExpiresIn),
+            Scopes = tokens.Scope,
             UpdatedAt = DateTime.UtcNow
         };
         await credentialRepository.UpsertAsync(credential, cancellationToken);

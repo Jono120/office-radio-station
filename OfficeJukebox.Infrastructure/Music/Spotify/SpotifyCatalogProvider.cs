@@ -23,8 +23,9 @@ public sealed class SpotifyCatalogProvider(
     public ProviderCapabilities Capabilities =>
         ProviderCapabilities.Search | ProviderCapabilities.Resolve |
         ProviderCapabilities.DevicePlayback | ProviderCapabilities.RequiresAuth;
+    public string? SetupUrl => "https://developer.spotify.com/dashboard";
 
-    public async Task<IReadOnlyList<Track>> SearchAsync(string query, int limit, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<CatalogSearchResult>> SearchAsync(string query, int limit, CancellationToken cancellationToken = default)
     {
         var effectiveLimit = Math.Clamp(limit, 1, MaxSearchLimit);
         var client = await CreateAuthedClientAsync(cancellationToken);
@@ -34,8 +35,15 @@ public sealed class SpotifyCatalogProvider(
         await EnsureSuccessAsync(response, cancellationToken);
         var json = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken);
         var items = json.GetProperty("tracks").GetProperty("items");
-        return items.EnumerateArray().Select(MapTrack).ToList();
+        return items.EnumerateArray()
+            .Select(item => new CatalogSearchResult(
+                item.GetProperty("id").GetString() ?? string.Empty,
+                MapTrack(item)))
+            .ToList();
     }
+
+    public Task<bool> IsReadyAsync(CancellationToken cancellationToken = default) =>
+        tokenService.IsAuthenticatedAsync(ProviderId, cancellationToken);
 
     public async Task<Track> ResolveAsync(TrackRef trackRef, CancellationToken cancellationToken = default)
     {
@@ -93,20 +101,6 @@ public sealed class SpotifyCatalogProvider(
             throw new InvalidOperationException("No active Spotify Connect device found. Open Spotify on a speaker, computer, or phone and try again.");
         }
 
-        await EnsureSuccessAsync(response, cancellationToken);
-    }
-
-    public async Task PauseAsync(CancellationToken cancellationToken = default)
-    {
-        var client = await CreateAuthedClientAsync(cancellationToken);
-        var response = await client.PutAsync("me/player/pause", null, cancellationToken);
-        await EnsureSuccessAsync(response, cancellationToken);
-    }
-
-    public async Task ResumeAsync(CancellationToken cancellationToken = default)
-    {
-        var client = await CreateAuthedClientAsync(cancellationToken);
-        var response = await client.PutAsync("me/player/play", null, cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
     }
 

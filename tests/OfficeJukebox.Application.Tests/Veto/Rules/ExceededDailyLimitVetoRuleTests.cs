@@ -55,6 +55,25 @@ public class ExceededDailyLimitVetoRuleTests
         Assert.False(rule.CantVetoTrack("a user", new TrackPlay()));
     }
 
+    [Fact]
+    public void Veto_cast_today_on_a_track_started_yesterday_counts_toward_today()
+    {
+        // The limit keys off when the veto was cast, not when the track played.
+        var playFromYesterday = new TrackPlay
+        {
+            StartedAt = new DateTime(2013, 10, 1, 23, 0, 0),
+            Vetoes = new List<TrackPlayVeto>
+            {
+                new() { ByUser = "a user", VetoedAt = new DateTime(2013, 10, 2, 9, 0, 0) },
+                new() { ByUser = "a user", VetoedAt = new DateTime(2013, 10, 2, 9, 30, 0) }
+            }
+        };
+        var repository = CreateRepository(playFromYesterday);
+        var rule = CreateRule(repository, dailyLimit: 2);
+
+        Assert.True(rule.CantVetoTrack("a user", new TrackPlay()));
+    }
+
     private ExceededDailyLimitVetoRule CreateRule(Mock<ITrackPlayRepository> repository, int dailyLimit)
     {
         // Office zone pinned to UTC so office-local dates equal the UTC
@@ -75,10 +94,10 @@ public class ExceededDailyLimitVetoRuleTests
         return mock;
     }
 
-    private static TrackPlay Play(string user, DateTime startedAt) =>
+    private static TrackPlay Play(string user, DateTime vetoedAt) =>
         new()
         {
-            StartedAt = startedAt,
-            Vetoes = new List<TrackPlayVeto> { new() { ByUser = user } }
+            StartedAt = vetoedAt,
+            Vetoes = new List<TrackPlayVeto> { new() { ByUser = user, VetoedAt = vetoedAt } }
         };
 }

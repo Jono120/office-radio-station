@@ -22,8 +22,6 @@ public sealed class MusicProviderRegistry(IEnumerable<IMusicCatalogProvider> cat
             .Select(p => new ProviderInfo(p.ProviderId, GetDisplayName(p.ProviderId), p.Capabilities))
             .ToList();
 
-    public IReadOnlyList<IMusicCatalogProvider> GetAllCatalogProviders() => _catalog.Values.ToList();
-
     private static string GetDisplayName(string providerId) => providerId switch
     {
         "spotify" => "Spotify",

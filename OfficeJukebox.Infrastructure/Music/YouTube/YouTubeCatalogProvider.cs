@@ -20,8 +20,21 @@ public sealed partial class YouTubeCatalogProvider(
     public string ProviderId => "youtube";
     public ProviderCapabilities Capabilities =>
         ProviderCapabilities.Search | ProviderCapabilities.Resolve;
+    public string? SetupUrl => "https://console.cloud.google.com/apis/credentials";
 
-    public async Task<IReadOnlyList<Track>> SearchAsync(string query, int limit, CancellationToken cancellationToken = default)
+    public async Task<bool> IsReadyAsync(CancellationToken cancellationToken = default)
+    {
+        // Ready with either a stored key (saved via provider settings) or a
+        // configured MusicProviders:YouTube:ApiKey fallback.
+        if (await tokenService.IsAuthenticatedAsync(ProviderId, cancellationToken))
+        {
+            return true;
+        }
+
+        return !string.IsNullOrWhiteSpace(options.Value.YouTube.ApiKey);
+    }
+
+    public async Task<IReadOnlyList<CatalogSearchResult>> SearchAsync(string query, int limit, CancellationToken cancellationToken = default)
     {
         var apiKey = await GetApiKeyAsync(cancellationToken);
         var effectiveLimit = Math.Clamp(limit, 1, MaxSearchLimit);
@@ -46,8 +59,8 @@ public sealed partial class YouTubeCatalogProvider(
         var durations = await FetchDurationsAsync(client, apiKey, videoIds, cancellationToken);
         return items.EnumerateArray()
             .Select(item => MapSearchItem(item, durations))
-            .Where(track => track is not null)
-            .Cast<Track>()
+            .Where(result => result is not null)
+            .Cast<CatalogSearchResult>()
             .ToList();
     }
 
@@ -112,7 +125,7 @@ public sealed partial class YouTubeCatalogProvider(
         return apiKey;
     }
 
-    private static Track? MapSearchItem(JsonElement item, IReadOnlyDictionary<string, long> durations)
+    private static CatalogSearchResult? MapSearchItem(JsonElement item, IReadOnlyDictionary<string, long> durations)
     {
         var videoId = item.GetProperty("id").GetProperty("videoId").GetString();
         if (string.IsNullOrWhiteSpace(videoId))
@@ -122,7 +135,7 @@ public sealed partial class YouTubeCatalogProvider(
 
         var snippet = item.GetProperty("snippet");
         durations.TryGetValue(videoId, out var durationMs);
-        return MapSnippet(videoId, snippet, durationMs);
+        return new CatalogSearchResult(videoId, MapSnippet(videoId, snippet, durationMs));
     }
 
     private static Track MapVideo(JsonElement item)

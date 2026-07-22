@@ -22,18 +22,20 @@ public sealed class QueueManager : IQueueManager
 
     public TrackPlay? Dequeue()
     {
-        if (!_queue.TryDequeue(out var dequeued))
+        // Iterative (not recursive) so a long run of skipped entries cannot
+        // deepen the stack.
+        while (_queue.TryDequeue(out var dequeued))
         {
-            return null;
+            if (dequeued.Status == TrackPlayStatus.Skipped)
+            {
+                _logger.LogDebug("Skipping track {TrackName} (vetoed or admin skipped)", dequeued.Track.Name);
+                continue;
+            }
+
+            return dequeued;
         }
 
-        if (dequeued.IsSkipped)
-        {
-            _logger.LogDebug("Skipping track {TrackName} (vetoed or admin skipped)", dequeued.Track.Name);
-            return Dequeue();
-        }
-
-        return dequeued;
+        return null;
     }
 
     public bool Contains(Guid trackPlayId) => _queue.Any(t => t.Id == trackPlayId);

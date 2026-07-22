@@ -21,6 +21,12 @@ public sealed record ProviderInfo(
     string DisplayName,
     ProviderCapabilities Capabilities);
 
+/// <summary>
+/// A catalog search hit. Carries the provider's native external id alongside
+/// the track so callers never have to re-derive the id from the track's link.
+/// </summary>
+public sealed record CatalogSearchResult(string ExternalId, Track Track);
+
 public sealed record PlaybackDevice(
     string Id,
     string Name,
