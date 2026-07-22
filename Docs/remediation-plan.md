@@ -136,14 +136,20 @@ Two new requirements land here because they build on Phase 3's auth work and Pha
 
 ---
 
-## Phase 6 — Verification
+## Phase 6 — Verification ✅ COMPLETE (23 Jul 2026, branch `phase-6-verification`)
 
-- `dotnet build` (0 warnings) and full test run, including the new tests from Phase 2.
-- `tsc -b` and `oxlint` clean after the frontend deletion; `npm run build` succeeds.
-- Manual smoke: fresh clone workflow — copy the dev settings example, run Player + Api + web, connect a provider, sign in with a domain email, queue, veto with the new id semantics, watch SignalR updates.
-- Access-control checks (all runnable on one device): loopback requests succeed; an integration test that fakes a non-allowed `RemoteIpAddress` gets 403 (proves the middleware works before any LAN rollout); queueing without a session gets 401; signing in with a non-domain email is rejected.
-- Re-run a dependency usage check (`npx depcheck` or grep) to confirm no removed package is still imported.
+- ✅ `dotnet build`: clean, **0 warnings**. Full test run: **54/54 pass** (33 Application + 21 in the new `OfficeJukebox.Api.Tests` project below).
+- ✅ `tsc -b` + `vite build` succeed, `oxlint` clean, `npx depcheck` reports no unused dependencies.
+- ✅ **New `tests/OfficeJukebox.Api.Tests` project** (the one code deliverable of this phase — added to the solution; `Program` exposed via `public partial class Program` for `WebApplicationFactory`):
+  - `LanAllowlistTests` (14 cases): loopback and all three RFC 1918 ranges allowed; public IPv4/IPv6 rejected, including the `172.32.0.1` boundary just past `172.16.0.0/12`; null remote address rejected; IPv4-mapped IPv6 unmapped before matching; loopback allowed even with an empty allowlist; `Parse` throws on an invalid CIDR.
+  - `AccessControlIntegrationTests` (7 cases): boots the real Api pipeline in-memory with a startup filter that fakes `Connection.RemoteIpAddress` (TestServer has no socket) and a throwaway SQLite file for the startup DB check. Proves: outside address → **403** on `/health` (the check loopback smoke can never trigger), loopback and private addresses served, queue/veto without a session → 401, wrong-domain sign-in → 401, and the full sign-in → session-restore (email lowercased) → sign-out → 401 lifecycle.
+- ✅ Manual smoke (Player + Api + web via `dotnet run`/`npm run dev`): Player without the shared secret → 401; `/api/providers` lists manual/spotify/youtube truthfully; anonymous enqueue → 401; wrong-domain sign-in → 401; domain sign-in → 200; enqueue → 201 attributed to the session email; veto with an unknown id → 404, veto by the real id → 200 (the Phase 2 id semantics); the Player's `queue-changed` notifications reached `/api/internal/*` → 200 (SignalR broadcast path); web app served and proxied on 5173.
+- Not covered: connecting Spotify/YouTube OAuth needs real credentials, which aren't configured on this machine — the provider connection walkthrough remains a manual step for whoever holds the keys.
 
 ## Suggested sequencing
 
 Each phase is an independent, reviewable commit/PR. Phase 1 is pure configuration (safe, immediate payoff). Phase 2 changes runtime behavior and should carry the new tests. Phase 3 items 9–11 touch both services and the frontend event names, so land them together. Phase 4 is large but mechanical deletion — do the frontend (item 12) and backend (items 13–17) as separate commits so reverts stay cheap. Phase 5 depends on Phase 3 (session/auth groundwork) and on Phase 4's contract typing (item 13) since it removes the `User` field from those same request records.
+
+---
+
+**Status: all six phases complete (23 Jul 2026).** All 19 audit findings plus the two post-audit access-control requirements are resolved and verified. Phase 6's work sits on branch `phase-6-verification` (uncommitted, manual commits per workflow); the only open follow-up is the credential-dependent Spotify/YouTube OAuth walkthrough noted above.
