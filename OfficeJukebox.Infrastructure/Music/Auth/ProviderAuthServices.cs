@@ -11,6 +11,7 @@ public interface IProviderTokenService
 {
     Task<string?> GetAccessTokenAsync(string provider, CancellationToken cancellationToken = default);
     Task StoreTokensAsync(string provider, string accessToken, string? refreshToken, DateTime? expiresAt, string? scopes, CancellationToken cancellationToken = default);
+    Task StoreConnectionStringAsync(string provider, string connectionString, CancellationToken cancellationToken = default);
     Task<bool> IsAuthenticatedAsync(string provider, CancellationToken cancellationToken = default);
     Task DisconnectAsync(string provider, CancellationToken cancellationToken = default);
 }
@@ -86,6 +87,24 @@ public sealed class ProviderTokenService(
             EncryptedRefreshToken = refreshToken is null ? null : _protector.Protect(refreshToken),
             ExpiresAt = expiresAt,
             Scopes = scopes,
+            UpdatedAt = DateTime.UtcNow
+        };
+        await credentialRepository.UpsertAsync(credential, cancellationToken);
+        await credentialRepository.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task StoreConnectionStringAsync(
+        string provider,
+        string connectionString,
+        CancellationToken cancellationToken = default)
+    {
+        var credential = new ProviderCredential
+        {
+            Provider = provider,
+            EncryptedAccessToken = _protector.Protect(connectionString),
+            EncryptedRefreshToken = null,
+            ExpiresAt = null,
+            Scopes = null,
             UpdatedAt = DateTime.UtcNow
         };
         await credentialRepository.UpsertAsync(credential, cancellationToken);

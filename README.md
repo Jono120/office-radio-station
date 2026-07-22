@@ -87,7 +87,7 @@ Copy `appsettings.Development.json.example` to both `OfficeJukebox.Api/appsettin
 ### 3. Connect and pick a device
 
 1. Run Api, Player, and Web (see **Run locally** above).
-2. Open the Web UI → **Admin** → sign in with the password from `Admin:Password` in your API config.
+2. Open the Web UI → **Settings** (user icon) → **Accounts** → sign in with the password from `Admin:Password` in your API config.
 3. Connect Spotify (and other providers) from the admin settings page and approve access.
 4. Open Spotify on your office speaker, computer, or phone (Spotify Connect).
 5. In admin settings, click **Devices** → **Use** on the target playback device.

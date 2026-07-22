@@ -1,57 +1,47 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link as RouterLink } from 'react-router-dom'
 import * as signalR from '@microsoft/signalr'
+import { AlertCircle, ListMusic, Music2, Search, Speaker } from 'lucide-react'
 import {
-  AlertCircle,
-  ListMusic,
-  Music2,
-  Pause,
-  Play,
-  Search,
-  Speaker,
-} from 'lucide-react'
-import { ImageZoom } from '@/components/kibo-ui/image-zoom'
-import { ListItems } from '@/components/kibo-ui/list'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import {
+  Alert,
+  Badge,
+  Button,
   Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Progress, ProgressValue } from '@/components/ui/progress'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import {
+  Link,
   Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { apiFetch } from '@/lib/api'
-import { formatMs, queueStatusVariant } from '@/lib/format'
-import type { NowPlaying, ProviderInfo, QueueItem, SearchResult } from '@/lib/types'
-import { providerIsSearchable } from '@/lib/types'
+  Text,
+  TextField,
+  View,
+} from 'reshaped'
+import { PlaybackQueueTable } from '@/components/playback-queue-table'
 import { useProfile } from '@/hooks/use-profile'
+import { apiFetch } from '@/lib/api'
+import { formatMs } from '@/lib/format'
+import { effectivePlaybackCount } from '@/lib/placeholder-tracks'
+import type { NowPlaying, ProviderInfo, QueueItem, SearchResult } from '@/lib/types'
+import {
+  DEFAULT_SEARCH_PROVIDER,
+  pickDefaultSearchProvider,
+  providerIsSearchable,
+  sortSearchProviders,
+} from '@/lib/types'
 
 export function JukeboxPage() {
   const { username } = useProfile()
   const [queue, setQueue] = useState<QueueItem[]>([])
   const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null)
   const [providers, setProviders] = useState<ProviderInfo[]>([])
-  const [selectedProvider, setSelectedProvider] = useState('spotify')
+  const [selectedProvider, setSelectedProvider] = useState(DEFAULT_SEARCH_PROVIDER)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [error, setError] = useState<string | null>(null)
 
   const searchableProviders = useMemo(
-    () => providers.filter(providerIsSearchable),
+    () => sortSearchProviders(providers.filter(providerIsSearchable)),
     [providers],
   )
+  const canSearch = searchableProviders.length > 0
+  const playbackCount = effectivePlaybackCount(nowPlaying, queue)
 
   const connection = useMemo(
     () =>
@@ -83,7 +73,7 @@ export function JukeboxPage() {
       setProviders(nextProviders)
       const available = nextProviders.filter(providerIsSearchable)
       if (available.length > 0 && !available.some((p) => p.id === selectedProvider)) {
-        setSelectedProvider(available[0].id)
+        setSelectedProvider(pickDefaultSearchProvider(available))
       }
     }
   }, [selectedProvider])
@@ -111,6 +101,10 @@ export function JukeboxPage() {
   }, [connection, refreshQueue, refreshNowPlaying])
 
   const runSearch = async () => {
+    if (!canSearch || searchQuery.trim().length === 0) {
+      return
+    }
+
     setError(null)
     const response = await apiFetch(
       `/api/search?q=${encodeURIComponent(searchQuery)}&provider=${encodeURIComponent(selectedProvider)}`,
@@ -145,213 +139,176 @@ export function JukeboxPage() {
     await refreshQueue()
   }
 
-  const progressPercent =
-    nowPlaying?.durationMs && nowPlaying.progressMs !== undefined
-      ? Math.min(100, (nowPlaying.progressMs / nowPlaying.durationMs) * 100)
-      : 0
-
   return (
-    <>
+    <View gap={10}>
       {error ? (
-        <Alert variant="destructive">
-          <AlertCircle />
-          <AlertTitle>Something went wrong</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
+        <Alert color="critical" icon={AlertCircle} title="Something went wrong">
+          {error}
         </Alert>
       ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Music2 className="size-4" />
-            Now playing
-          </CardTitle>
-          <CardDescription>Live playback from the office output device.</CardDescription>
-          {nowPlaying?.deviceName ? (
-            <CardAction>
-              <Badge variant="outline" className="gap-1">
-                <Speaker className="size-3" />
-                {nowPlaying.deviceName}
-              </Badge>
-            </CardAction>
-          ) : null}
-        </CardHeader>
-        <CardContent>
-          {nowPlaying?.trackName ? (
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-              {nowPlaying.artworkUrl ? (
-                <ImageZoom className="shrink-0 overflow-hidden rounded-xl">
-                  <img
-                    src={nowPlaying.artworkUrl}
-                    alt={nowPlaying.albumName ?? nowPlaying.trackName}
-                    className="size-28 rounded-xl object-cover"
-                  />
-                </ImageZoom>
-              ) : (
-                <div className="flex size-28 shrink-0 items-center justify-center rounded-xl bg-muted">
-                  <Music2 className="size-10 text-muted-foreground" />
-                </div>
-              )}
-              <div className="min-w-0 flex-1 space-y-3">
-                <div>
-                  <p className="truncate text-lg font-semibold">{nowPlaying.trackName}</p>
-                  {nowPlaying.albumName ? (
-                    <p className="truncate text-sm text-muted-foreground">{nowPlaying.albumName}</p>
-                  ) : null}
-                </div>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  {nowPlaying.isPlaying ? (
-                    <>
-                      <Play className="size-3.5" />
-                      Playing
-                    </>
-                  ) : (
-                    <>
-                      <Pause className="size-3.5" />
-                      Paused
-                    </>
-                  )}
-                </div>
-                <div className="space-y-1">
-                  <Progress value={progressPercent}>
-                    <ProgressValue>
-                      {() => `${formatMs(nowPlaying.progressMs)} / ${formatMs(nowPlaying.durationMs)}`}
-                    </ProgressValue>
-                  </Progress>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">Nothing playing yet. Queue a track to get started.</p>
-          )}
-        </CardContent>
-      </Card>
+      <Card padding={0}>
+        <View
+          attributes={{ style: { borderBottom: '1px solid var(--rs-color-border-neutral-faded)' } }}
+          gap={2}
+          padding={6}
+        >
+          <View align="center" direction="row" gap={2}>
+            <Search size={20} />
+            <Text variant="body-1" weight="medium">
+              Search tracks
+            </Text>
+          </View>
+          <Text color="neutral-faded" variant="body-3">
+            Find music from a connected provider and add it to the office queue.
+          </Text>
+        </View>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Search className="size-4" />
-            Search tracks
-          </CardTitle>
-          <CardDescription>Find music from a connected provider and add it to the queue.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {searchableProviders.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No music providers are connected yet. Ask an admin to connect Spotify, Apple Music, or YouTube in settings.
-            </p>
-          ) : (
-            <>
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <Select
-                  value={selectedProvider}
-                  onValueChange={(value) => {
-                    if (value) setSelectedProvider(value)
-                  }}
-                >
-                  <SelectTrigger className="w-full sm:w-44">
-                    <SelectValue placeholder="Provider" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {searchableProviders.map((provider) => (
-                      <SelectItem key={provider.id} value={provider.id}>
-                        {provider.displayName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input
-                  className="flex-1"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
+        <View gap={6} padding={6}>
+          <View align="center" direction={{ s: 'column', l: 'row' }} gap={4}>
+            <View attributes={{ style: { minWidth: 192, width: '100%' } }}>
+              <Select
+                disabled={!canSearch}
+                name="provider"
+                onChange={({ value }) => setSelectedProvider(value)}
+                placeholder="Provider"
+                value={canSearch ? selectedProvider : ''}
+              >
+                {searchableProviders.map((provider) => (
+                  <Select.Option key={provider.id} value={provider.id}>
+                    {provider.displayName}
+                  </Select.Option>
+                ))}
+              </Select>
+            </View>
+
+            <View.Item grow>
+              <TextField
+                disabled={!canSearch}
+                icon={Search}
+                inputAttributes={{
+                  onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => {
+                    if (event.key === 'Enter') {
                       void runSearch()
                     }
+                  },
+                }}
+                name="search"
+                onChange={({ value }) => setSearchQuery(value)}
+                placeholder="Search for artists, albums, or tracks…"
+                value={searchQuery}
+              />
+            </View.Item>
+
+            <Button disabled={!canSearch || searchQuery.trim().length === 0} onClick={() => void runSearch()}>
+              Search
+            </Button>
+          </View>
+
+          {!canSearch ? (
+            <Text color="neutral-faded" variant="body-3">
+              No music providers are connected yet. Ask an admin to connect Spotify, Apple Music, or YouTube in{' '}
+              <RouterLink style={{ color: 'inherit' }} to="/settings/accounts">
+                <Link color="inherit" variant="plain">
+                  settings
+                </Link>
+              </RouterLink>
+              .
+            </Text>
+          ) : searchResults.length > 0 ? (
+            <Card padding={0}>
+              {searchResults.map((result, index) => (
+                <View
+                  key={`${result.provider}:${result.externalId}`}
+                  align="center"
+                  attributes={{
+                    style: {
+                      borderBottom:
+                        index < searchResults.length - 1
+                          ? '1px solid var(--rs-color-border-neutral-faded)'
+                          : undefined,
+                    },
                   }}
-                  placeholder="Search tracks"
-                />
-                <Button type="button" onClick={() => void runSearch()}>
-                  Search
-                </Button>
-              </div>
-
-              {searchResults.length > 0 ? (
-                <ListItems className="rounded-xl border bg-muted/30 p-0">
-                  {searchResults.map((result) => (
-                    <div
-                      key={`${result.provider}:${result.externalId}`}
-                      className="flex items-center justify-between gap-3 border-b px-4 py-3 last:border-b-0"
-                    >
-                      <div className="flex min-w-0 items-center gap-3">
-                        {result.artworkUrl ? (
-                          <img
-                            src={result.artworkUrl}
-                            alt=""
-                            className="size-10 shrink-0 rounded-md object-cover"
-                          />
-                        ) : (
-                          <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted">
-                            <Music2 className="size-4 text-muted-foreground" />
-                          </div>
-                        )}
-                        <div className="min-w-0 text-left">
-                          <p className="truncate font-medium">{result.name}</p>
-                          <p className="truncate text-sm text-muted-foreground">
-                            {result.albumName ?? result.provider} · {formatMs(result.durationMs)}
-                          </p>
-                        </div>
-                      </div>
-                      <Button type="button" size="sm" variant="secondary" onClick={() => void queueTrack(result)}>
-                        Queue
-                      </Button>
-                    </div>
-                  ))}
-                </ListItems>
-              ) : (
-                <p className="text-sm text-muted-foreground">Search results will appear here.</p>
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <ListMusic className="size-4" />
-            Queue
-          </CardTitle>
-          <CardDescription>
-            {queue.length === 0 ? 'No tracks queued.' : `${queue.length} track${queue.length === 1 ? '' : 's'} waiting.`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {queue.length > 0 ? (
-            <ScrollArea className="h-72 rounded-xl border">
-              <ListItems className="p-0">
-                {queue.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between gap-3 border-b px-4 py-3 last:border-b-0"
-                  >
-                    <div className="min-w-0 text-left">
-                      <p className="truncate font-medium">{item.trackName}</p>
-                      <p className="truncate text-sm text-muted-foreground">
-                        {item.albumName ? `${item.albumName} · ` : ''}
-                        {item.provider} · {item.user}
-                      </p>
-                    </div>
-                    <Badge variant={queueStatusVariant(item.status)}>{item.status}</Badge>
-                  </div>
-                ))}
-              </ListItems>
-            </ScrollArea>
+                  direction="row"
+                  gap={4}
+                  justify="space-between"
+                  padding={4}
+                >
+                  <View align="center" direction="row" gap={4}>
+                    {result.artworkUrl ? (
+                      <img
+                        alt=""
+                        src={result.artworkUrl}
+                        style={{ borderRadius: 8, height: 48, objectFit: 'cover', width: 48 }}
+                      />
+                    ) : (
+                      <View
+                        align="center"
+                        attributes={{
+                          style: {
+                            background: 'var(--rs-color-background-neutral-faded)',
+                            borderRadius: 8,
+                            height: 48,
+                            width: 48,
+                          },
+                        }}
+                        justify="center"
+                      >
+                        <Music2 size={20} />
+                      </View>
+                    )}
+                    <View>
+                      <Text maxLines={1} variant="body-3" weight="medium">
+                        {result.name}
+                      </Text>
+                      <Text color="neutral-faded" maxLines={1} variant="caption-1">
+                        {result.albumName ?? result.provider} · {formatMs(result.durationMs)}
+                      </Text>
+                    </View>
+                  </View>
+                  <Button onClick={() => void queueTrack(result)} size="small" variant="outline">
+                    Queue
+                  </Button>
+                </View>
+              ))}
+            </Card>
           ) : (
-            <p className="text-sm text-muted-foreground">The queue is empty.</p>
+            <Text color="neutral-faded" variant="body-3">
+              Search results will appear here.
+            </Text>
           )}
-        </CardContent>
+        </View>
       </Card>
-    </>
+
+      <Card padding={0}>
+        <View
+          attributes={{ style: { borderBottom: '1px solid var(--rs-color-border-neutral-faded)' } }}
+          gap={2}
+          padding={6}
+        >
+          <View align="center" direction="row" gap={2} justify="space-between">
+            <View align="center" direction="row" gap={2}>
+              <ListMusic size={20} />
+              <Text variant="body-1" weight="medium">
+                Now playing
+              </Text>
+            </View>
+            {nowPlaying?.deviceName ? (
+              <Badge color="neutral" icon={Speaker}>
+                {nowPlaying.deviceName}
+              </Badge>
+            ) : null}
+          </View>
+          <Text color="neutral-faded" variant="body-3">
+            {playbackCount === 0
+              ? 'Nothing queued yet.'
+              : `${playbackCount} track${playbackCount === 1 ? '' : 's'} in playback.`}
+          </Text>
+        </View>
+        <View padding={6}>
+          <PlaybackQueueTable nowPlaying={nowPlaying} queue={queue} />
+        </View>
+      </Card>
+    </View>
   )
 }

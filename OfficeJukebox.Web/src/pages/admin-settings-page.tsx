@@ -1,23 +1,28 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { AlertCircle, Lock, LogOut, Speaker } from 'lucide-react'
-import { Status, StatusIndicator, StatusLabel } from '@/components/kibo-ui/status'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { Alert, Badge, Button, Card, Text, TextField, View } from 'reshaped'
+import { IntegrationRow, ProviderIcon } from '@/components/settings/integration-row'
+import { SettingsGroup, SettingsSection } from '@/components/settings/settings-layout'
 import { useAdminSession } from '@/hooks/use-admin-session'
 import { apiFetch } from '@/lib/api'
 import type { Device, ProviderInfo } from '@/lib/types'
-import { providerRequiresAuth } from '@/lib/types'
+import {
+  providerShowsInAccounts,
+  providerSupportsDevicePlayback,
+  providerSupportsManualConnection,
+} from '@/lib/types'
+
+const providerDescriptions: Record<string, string> = {
+  spotify: 'Link your Spotify account to search tracks and play over Connect.',
+  'apple-music': 'Link Apple Music to search the catalog and queue tracks for playback.',
+  youtube: 'Create a YouTube Data API key in Google Cloud, then paste it below to connect.',
+}
+
+const connectionPlaceholders: Record<string, string> = {
+  spotify: 'Paste your Spotify refresh token',
+  youtube: 'Paste your YouTube Data API key',
+}
 
 export function AdminSettingsPage() {
   const { isAuthenticated, isLoading, login, logout } = useAdminSession()
@@ -25,11 +30,15 @@ export function AdminSettingsPage() {
   const [password, setPassword] = useState('')
   const [providers, setProviders] = useState<ProviderInfo[]>([])
   const [devices, setDevices] = useState<Device[]>([])
+  const [activeProvider, setActiveProvider] = useState<string | null>(null)
+  const [setupProvider, setSetupProvider] = useState<string | null>(null)
+  const [connectionStrings, setConnectionStrings] = useState<Record<string, string>>({})
   const [error, setError] = useState<string | null>(null)
   const [loginError, setLoginError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isSavingConnection, setIsSavingConnection] = useState(false)
 
-  const adminProviders = providers.filter(providerRequiresAuth)
+  const integrationProviders = providers.filter(providerShowsInAccounts)
 
   const refreshProviders = useCallback(async () => {
     const response = await apiFetch('/api/providers')
@@ -85,6 +94,8 @@ export function AdminSettingsPage() {
       return
     }
     setDevices(await response.json())
+    setActiveProvider(provider)
+    setSetupProvider(null)
   }
 
   const setDevice = async (provider: string, deviceId: string) => {
@@ -110,164 +121,221 @@ export function AdminSettingsPage() {
       setError(body.error ?? `Failed to disconnect ${providerId}.`)
       return
     }
+    if (activeProvider === providerId) {
+      setActiveProvider(null)
+      setDevices([])
+    }
+    if (setupProvider === providerId) {
+      setSetupProvider(null)
+    }
     await refreshProviders()
   }
 
-  const connectProvider = (providerId: string) => {
-    window.location.href = `/api/providers/${providerId}/auth`
+  const beginConnect = async (providerId: string) => {
+    setError(null)
+    const response = await apiFetch(`/api/providers/${providerId}/connect-url`)
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      setError(body.error ?? 'Failed to get provider connect URL.')
+      return
+    }
+
+    const body = (await response.json()) as { url: string }
+    window.open(body.url, '_blank', 'noopener,noreferrer')
+    setSetupProvider(providerId)
+    setConnectionStrings((current) => ({ ...current, [providerId]: '' }))
+    setActiveProvider(null)
+    setDevices([])
+  }
+
+  const saveConnection = async (event: React.FormEvent, providerId: string) => {
+    event.preventDefault()
+    const connectionString = connectionStrings[providerId]?.trim() ?? ''
+    if (!connectionString) {
+      return
+    }
+
+    setError(null)
+    setIsSavingConnection(true)
+    try {
+      const response = await apiFetch(`/api/providers/${providerId}/connection`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connectionString }),
+      })
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}))
+        setError(body.error ?? 'Failed to save connection string.')
+        return
+      }
+
+      setSetupProvider(null)
+      setConnectionStrings((current) => ({ ...current, [providerId]: '' }))
+      await refreshProviders()
+    } finally {
+      setIsSavingConnection(false)
+    }
   }
 
   if (isLoading) {
-    return <p className="text-sm text-muted-foreground">Checking admin session…</p>
+    return (
+      <Text color="neutral-faded" variant="body-3">
+        Checking admin session…
+      </Text>
+    )
   }
 
   if (!isAuthenticated) {
     return (
-      <Card className="mx-auto w-full max-w-md">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Lock className="size-4" />
-            Admin sign in
-          </CardTitle>
-          <CardDescription>
-            Provider connections and playback devices are restricted to administrators.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form className="space-y-4" onSubmit={(event) => void handleLogin(event)}>
-            <div className="space-y-2">
-              <Label htmlFor="admin-password">Admin password</Label>
-              <Input
-                id="admin-password"
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter admin password"
-              />
-            </div>
-            {loginError ? <p className="text-sm text-destructive">{loginError}</p> : null}
-            <Button className="w-full" type="submit" disabled={isSubmitting || password.length === 0}>
-              {isSubmitting ? 'Signing in…' : 'Sign in'}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+      <SettingsSection
+        title="Accounts"
+        description="Sign in to connect music providers and manage office playback devices."
+      >
+        <View attributes={{ style: { marginInline: 'auto', maxWidth: 420, width: '100%' } }}>
+          <Card>
+            <View gap={6}>
+              <View gap={1}>
+                <View align="center" direction="row" gap={2}>
+                  <Lock size={16} />
+                  <Text variant="body-1" weight="medium">
+                    Admin sign in
+                  </Text>
+                </View>
+                <Text color="neutral-faded" variant="body-3">
+                  Provider connections are restricted to administrators.
+                </Text>
+              </View>
+              <form onSubmit={(event) => void handleLogin(event)}>
+                <View gap={4}>
+                  <TextField
+                    inputAttributes={{ autoComplete: 'current-password', type: 'password' }}
+                    name="admin-password"
+                    onChange={({ value }) => setPassword(value)}
+                    placeholder="Enter admin password"
+                    value={password}
+                  />
+                  {loginError ? (
+                    <Text color="critical" variant="body-3">
+                      {loginError}
+                    </Text>
+                  ) : null}
+                  <Button disabled={isSubmitting || password.length === 0} fullWidth type="submit">
+                    {isSubmitting ? 'Signing in…' : 'Sign in'}
+                  </Button>
+                </View>
+              </form>
+            </View>
+          </Card>
+        </View>
+      </SettingsSection>
     )
   }
 
   return (
-    <>
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold">Music provider settings</h2>
-          <p className="text-sm text-muted-foreground">
-            Connect Spotify, Apple Music, or YouTube and choose the office playback device.
-          </p>
-        </div>
-        <Button type="button" variant="outline" size="sm" onClick={() => void logout()}>
-          <LogOut className="size-4" />
+    <SettingsSection
+      title="Accounts"
+      description="Connect external services to power search, playback, and the shared office jukebox."
+    >
+      <View align="end">
+        <Button icon={LogOut} onClick={() => void logout()} size="small" variant="outline">
           Sign out
         </Button>
-      </div>
+      </View>
 
       {error ? (
-        <Alert variant="destructive">
-          <AlertCircle />
-          <AlertTitle>Something went wrong</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
+        <Alert color="critical" icon={AlertCircle} title="Something went wrong">
+          {error}
         </Alert>
       ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Provider connections</CardTitle>
-          <CardDescription>OAuth connections shared by the whole office jukebox.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {adminProviders.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No OAuth providers are enabled in server configuration.</p>
-          ) : (
-            adminProviders.map((provider) => (
-              <div
-                key={provider.id}
-                className="flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div className="space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-medium">{provider.displayName}</p>
-                    <Status status={provider.isAuthenticated ? 'online' : 'offline'}>
-                      <StatusIndicator />
-                      <StatusLabel>
-                        {provider.isAuthenticated ? 'Connected' : 'Not connected'}
-                      </StatusLabel>
-                    </Status>
-                  </div>
-                  {!provider.enabled ? (
-                    <p className="text-sm text-muted-foreground">Provider is disabled in server configuration.</p>
-                  ) : null}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button type="button" size="sm" onClick={() => connectProvider(provider.id)} disabled={!provider.enabled}>
-                    Connect
-                  </Button>
-                  {provider.isAuthenticated ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => void disconnectProvider(provider.id)}
-                    >
-                      Disconnect
-                    </Button>
-                  ) : null}
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => void loadDevices(provider.id)}
-                    disabled={!provider.isAuthenticated}
-                  >
-                    Devices
-                  </Button>
-                </div>
-              </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
+      <SettingsGroup
+        description="Connect streaming services for catalog search and shared playback."
+        title="Music providers"
+      >
+        {integrationProviders.length === 0 ? (
+          <Text color="neutral-faded" variant="body-3">
+            No music providers are enabled in server configuration.
+          </Text>
+        ) : (
+          integrationProviders.map((provider) => {
+            const supportsDevices = providerSupportsDevicePlayback(provider)
+            const supportsManualConnection = providerSupportsManualConnection(provider)
+            const isYouTube = provider.id === 'youtube'
+            const isSettingUp = setupProvider === provider.id
 
-      {devices.length > 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Playback devices</CardTitle>
-            <CardDescription>Select which speaker or Connect device plays office music.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {devices.map((device) => (
-              <div
-                key={device.id}
-                className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2"
+            return (
+              <IntegrationRow
+                key={provider.id}
+                connected={provider.isAuthenticated}
+                connectedLabel={isYouTube ? 'Online' : undefined}
+                description={providerDescriptions[provider.id] ?? `Connect ${provider.displayName}.`}
+                disabled={!provider.enabled}
+                disabledReason={provider.enabled ? undefined : 'Provider is disabled in server configuration.'}
+                disconnectedLabel={isYouTube ? 'Offline' : undefined}
+                expanded={activeProvider === provider.id || isSettingUp}
+                icon={<ProviderIcon label={provider.displayName} providerId={provider.id} />}
+                name={provider.displayName}
+                onConnect={supportsManualConnection ? () => void beginConnect(provider.id) : undefined}
+                onDisconnect={provider.isAuthenticated ? () => void disconnectProvider(provider.id) : undefined}
+                onManage={supportsDevices ? () => void loadDevices(provider.id) : undefined}
               >
-                <div className="flex items-center gap-2 text-sm">
-                  <Speaker className="size-4 text-muted-foreground" />
-                  <span>{device.name}</span>
-                  {device.isActive ? <Badge>Active</Badge> : null}
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={device.isActive ? 'secondary' : 'default'}
-                  disabled={device.isActive}
-                  onClick={() => void setDevice(device.provider, device.id)}
-                >
-                  Use
-                </Button>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      ) : null}
-    </>
+                {isSettingUp ? (
+                  <form onSubmit={(event) => void saveConnection(event, provider.id)}>
+                    <View gap={3}>
+                      <Text color="neutral-faded" variant="body-3">
+                        Complete setup in the new tab, then paste your connection string here to save it.
+                      </Text>
+                      <TextField
+                        inputAttributes={{ autoComplete: 'off', type: 'password' }}
+                        name={`connection-${provider.id}`}
+                        onChange={({ value }) =>
+                          setConnectionStrings((current) => ({
+                            ...current,
+                            [provider.id]: value,
+                          }))
+                        }
+                        placeholder={connectionPlaceholders[provider.id] ?? 'Paste connection string'}
+                        value={connectionStrings[provider.id] ?? ''}
+                      />
+                      <View direction="row" gap={2} wrap>
+                        <Button
+                          disabled={isSavingConnection || !connectionStrings[provider.id]?.trim()}
+                          size="small"
+                          type="submit"
+                        >
+                          {isSavingConnection ? 'Saving…' : 'Save connection'}
+                        </Button>
+                        <Button onClick={() => setSetupProvider(null)} size="small" type="button" variant="ghost">
+                          Cancel
+                        </Button>
+                      </View>
+                    </View>
+                  </form>
+                ) : null}
+                {devices.map((device) => (
+                  <Card key={device.id} padding={3}>
+                    <View align="center" direction="row" gap={3} justify="space-between">
+                      <View align="center" direction="row" gap={2}>
+                        <Speaker size={16} />
+                        <Text variant="body-3">{device.name}</Text>
+                        {device.isActive ? <Badge color="positive">Active</Badge> : null}
+                      </View>
+                      <Button
+                        disabled={device.isActive}
+                        onClick={() => void setDevice(device.provider, device.id)}
+                        size="small"
+                        variant={device.isActive ? 'outline' : 'solid'}
+                      >
+                        Use
+                      </Button>
+                    </View>
+                  </Card>
+                ))}
+              </IntegrationRow>
+            )
+          })
+        )}
+      </SettingsGroup>
+    </SettingsSection>
   )
 }

@@ -154,9 +154,7 @@ public sealed class ProvidersController(
         var responses = new List<ProviderInfoResponse>();
         foreach (var provider in providers)
         {
-            var authenticated = provider.Capabilities.HasFlag(ProviderCapabilities.RequiresAuth)
-                ? await tokenService.IsAuthenticatedAsync(provider.Id, cancellationToken)
-                : true;
+            var authenticated = await IsProviderReadyAsync(provider, cancellationToken);
             responses.Add(new ProviderInfoResponse(
                 provider.Id,
                 provider.DisplayName,
@@ -166,6 +164,83 @@ public sealed class ProvidersController(
         }
 
         return Ok(responses);
+    }
+
+    [HttpGet("{providerId}/connect-url")]
+    [RequireAdmin]
+    public IActionResult GetConnectUrl(string providerId)
+    {
+        if (providerId.Equals("youtube", StringComparison.OrdinalIgnoreCase))
+        {
+            return Ok(new ProviderConnectUrlResponse("https://console.cloud.google.com/apis/credentials"));
+        }
+
+        if (providerId.Equals("spotify", StringComparison.OrdinalIgnoreCase))
+        {
+            return Ok(new ProviderConnectUrlResponse("https://developer.spotify.com/dashboard"));
+        }
+
+        var auth = authServices.FirstOrDefault(a => a.ProviderId.Equals(providerId, StringComparison.OrdinalIgnoreCase));
+        if (auth is null)
+        {
+            return NotFound();
+        }
+
+        try
+        {
+            var state = Guid.NewGuid().ToString("N");
+            HttpContext.Session.SetString($"oauth_state_{providerId}", state);
+            return Ok(new ProviderConnectUrlResponse(auth.BuildAuthorizationUrl(state)));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPut("{providerId}/connection")]
+    [RequireAdmin]
+    public async Task<IActionResult> SaveConnection(
+        string providerId,
+        [FromBody] SaveProviderConnectionRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.ConnectionString))
+        {
+            return BadRequest(new { error = "Connection string is required." });
+        }
+
+        var catalog = registry.GetCatalog(providerId);
+        if (catalog is null)
+        {
+            return NotFound();
+        }
+
+        var connectionString = request.ConnectionString.Trim();
+
+        if (providerId.Equals("spotify", StringComparison.OrdinalIgnoreCase))
+        {
+            var auth = authServices.FirstOrDefault(a => a.ProviderId.Equals(providerId, StringComparison.OrdinalIgnoreCase));
+            if (auth is not null)
+            {
+                var refreshed = await auth.RefreshAccessTokenAsync(connectionString, cancellationToken);
+                if (refreshed is not null)
+                {
+                    var expiresAt = DateTime.UtcNow.AddSeconds(refreshed.ExpiresIn);
+                    await tokenService.StoreTokensAsync(
+                        providerId,
+                        refreshed.AccessToken,
+                        refreshed.RefreshToken ?? connectionString,
+                        expiresAt,
+                        refreshed.Scope,
+                        cancellationToken);
+                    return Ok(new { provider = providerId, authenticated = true });
+                }
+            }
+        }
+
+        await tokenService.StoreConnectionStringAsync(providerId, connectionString, cancellationToken);
+        return Ok(new { provider = providerId, authenticated = true });
     }
 
     [HttpGet("{providerId}/auth")]
@@ -199,7 +274,7 @@ public sealed class ProvidersController(
         CancellationToken cancellationToken)
     {
         var webAppUrl = musicOptions.Value.WebAppUrl ?? "http://localhost:5173";
-        var adminUrl = $"{webAppUrl.TrimEnd('/')}/admin";
+        var adminUrl = $"{webAppUrl.TrimEnd('/')}/settings/accounts";
 
         if (!string.IsNullOrWhiteSpace(error))
         {
@@ -246,14 +321,34 @@ public sealed class ProvidersController(
     [RequireAdmin]
     public async Task<IActionResult> Disconnect(string providerId, CancellationToken cancellationToken)
     {
-        var auth = authServices.FirstOrDefault(a => a.ProviderId.Equals(providerId, StringComparison.OrdinalIgnoreCase));
-        if (auth is null)
+        var catalog = registry.GetCatalog(providerId);
+        if (catalog is null)
         {
             return NotFound();
         }
 
         await tokenService.DisconnectAsync(providerId, cancellationToken);
         return Ok(new { provider = providerId, authenticated = false });
+    }
+
+    private async Task<bool> IsProviderReadyAsync(Application.Abstractions.Music.ProviderInfo provider, CancellationToken cancellationToken)
+    {
+        if (provider.Capabilities.HasFlag(ProviderCapabilities.RequiresAuth))
+        {
+            return await tokenService.IsAuthenticatedAsync(provider.Id, cancellationToken);
+        }
+
+        if (provider.Id.Equals("youtube", StringComparison.OrdinalIgnoreCase))
+        {
+            if (await tokenService.IsAuthenticatedAsync(provider.Id, cancellationToken))
+            {
+                return true;
+            }
+
+            return !string.IsNullOrWhiteSpace(musicOptions.Value.YouTube.ApiKey);
+        }
+
+        return true;
     }
 
     private static string[] CapabilitiesToArray(ProviderCapabilities capabilities) =>

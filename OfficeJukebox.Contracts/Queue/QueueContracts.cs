@@ -62,6 +62,10 @@ public sealed record PlaybackDeviceResponse(
 
 public sealed record SetDeviceRequest(string Provider, string DeviceId);
 
+public sealed record SaveProviderConnectionRequest(string ConnectionString);
+
+public sealed record ProviderConnectUrlResponse(string Url);
+
 public sealed record PlaybackProgressEvent(
     Guid? TrackPlayId,
     int ProgressMs,

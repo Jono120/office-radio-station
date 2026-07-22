@@ -1,22 +1,26 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { ListMusic, User } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Link as RouterLink } from 'react-router-dom'
+import { Avatar, Badge, Button, Card, Link, Text, TextField, View } from 'reshaped'
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Separator } from '@/components/ui/separator'
+  SettingsField,
+  SettingsGroup,
+  SettingsSection,
+} from '@/components/settings/settings-layout'
+import { ThemeSelection } from '@/components/settings/theme-selection'
 import { useProfile } from '@/hooks/use-profile'
 import { apiFetch } from '@/lib/api'
-import { queueStatusVariant } from '@/lib/format'
 import type { QueueItem } from '@/lib/types'
+
+function queueBadgeColor(status: string): 'positive' | 'primary' | 'neutral' {
+  switch (status.toLowerCase()) {
+    case 'playing':
+      return 'positive'
+    case 'queued':
+      return 'primary'
+    default:
+      return 'neutral'
+  }
+}
 
 export function ProfilePage() {
   const { username, setUsername, initials } = useProfile()
@@ -56,93 +60,94 @@ export function ProfilePage() {
   }
 
   return (
-    <>
-      <Card>
-        <CardHeader>
-          <CardTitle>Your profile</CardTitle>
-          <CardDescription>How you appear when you add tracks to the office queue.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="flex flex-col items-center gap-4 text-center sm:flex-row sm:text-left">
-            <div
-              aria-hidden
-              className="flex size-20 shrink-0 items-center justify-center rounded-full bg-primary text-2xl font-semibold text-primary-foreground"
-            >
-              {initials}
-            </div>
-            <div className="space-y-1">
-              <p className="text-lg font-semibold">{username}</p>
-              <p className="text-sm text-muted-foreground">
+    <SettingsSection
+      title="Profile"
+      description="Manage your personal information and how you appear in the office queue."
+    >
+      <SettingsGroup title="Profile picture" description="How teammates recognize you in the jukebox.">
+        <Card>
+          <View align="center" direction="row" gap={4}>
+            <Avatar initials={initials} size={16} />
+            <View gap={1}>
+              <Text variant="body-3" weight="medium">
+                {username}
+              </Text>
+              <Text color="neutral-faded" variant="body-3">
                 Tracks you queue are attributed to this name for everyone in the office.
-              </p>
-            </div>
-          </div>
+              </Text>
+            </View>
+          </View>
+        </Card>
+      </SettingsGroup>
 
-          <Separator />
-
-          <form className="space-y-4" onSubmit={handleSave}>
-            <div className="max-w-md space-y-2">
-              <Label htmlFor="profile-username" className="flex items-center gap-2">
-                <User className="size-4" />
-                Username
-              </Label>
-              <Input
-                id="profile-username"
-                value={draftUsername}
-                onChange={(e) => setDraftUsername(e.target.value)}
+      <SettingsGroup title="Personal information" description="Update the name shown when you queue music.">
+        <Card padding={0}>
+          <form onSubmit={handleSave}>
+            <SettingsField description="Unique name used when adding tracks to the shared queue." label="User name">
+              <TextField
+                name="username"
+                onChange={({ value }) => setDraftUsername(value)}
                 placeholder="office-user"
+                value={draftUsername}
               />
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button type="submit" disabled={draftUsername.trim().length === 0}>
-                Save profile
+            </SettingsField>
+            <View align="center" direction="row" gap={3} padding={4}>
+              <Button disabled={draftUsername.trim().length === 0} type="submit">
+                Save changes
               </Button>
-              {saved ? <span className="text-sm text-muted-foreground">Profile updated.</span> : null}
-            </div>
+              {saved ? (
+                <Text color="neutral-faded" variant="body-3">
+                  Profile updated.
+                </Text>
+              ) : null}
+            </View>
           </form>
-        </CardContent>
-      </Card>
+        </Card>
+      </SettingsGroup>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <ListMusic className="size-4" />
-            Your queue activity
-          </CardTitle>
-          <CardDescription>
-            {myQueueItems.length === 0
-              ? 'You have no tracks in the queue right now.'
-              : `${myQueueItems.length} track${myQueueItems.length === 1 ? '' : 's'} queued under your name.`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {myQueueItems.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Head back to the{' '}
-              <Link className="font-medium text-foreground underline-offset-4 hover:underline" to="/">
+      <SettingsGroup title="Theme" description="Choose how OfficeJukebox looks on this device.">
+        <ThemeSelection />
+      </SettingsGroup>
+
+      <SettingsGroup
+        title="Queue activity"
+        description={
+          myQueueItems.length === 0
+            ? 'You have no tracks in the queue right now.'
+            : `${myQueueItems.length} track${myQueueItems.length === 1 ? '' : 's'} queued under your name.`
+        }
+      >
+        {myQueueItems.length === 0 ? (
+          <Text color="neutral-faded" variant="body-3">
+            Head back to the{' '}
+            <RouterLink style={{ color: 'inherit' }} to="/">
+              <Link color="inherit" variant="plain">
                 jukebox
-              </Link>{' '}
-              to search and queue something.
-            </p>
-          ) : (
-            myQueueItems.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2"
-              >
-                <div className="min-w-0 text-left">
-                  <p className="truncate font-medium">{item.trackName}</p>
-                  <p className="truncate text-sm text-muted-foreground">
-                    {item.albumName ? `${item.albumName} · ` : ''}
-                    {item.provider}
-                  </p>
-                </div>
-                <Badge variant={queueStatusVariant(item.status)}>{item.status}</Badge>
-              </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
-    </>
+              </Link>
+            </RouterLink>{' '}
+            to search and queue something.
+          </Text>
+        ) : (
+          <View gap={2}>
+            {myQueueItems.map((item) => (
+              <Card key={item.id}>
+                <View align="center" direction="row" gap={3} justify="space-between">
+                  <View>
+                    <Text maxLines={1} variant="body-3" weight="medium">
+                      {item.trackName}
+                    </Text>
+                    <Text color="neutral-faded" maxLines={1} variant="caption-1">
+                      {item.albumName ? `${item.albumName} · ` : ''}
+                      {item.provider}
+                    </Text>
+                  </View>
+                  <Badge color={queueBadgeColor(item.status)}>{item.status}</Badge>
+                </View>
+              </Card>
+            ))}
+          </View>
+        )}
+      </SettingsGroup>
+    </SettingsSection>
   )
 }

@@ -5,11 +5,13 @@ using Microsoft.Extensions.Options;
 using OfficeJukebox.Application.Abstractions.Music;
 using OfficeJukebox.Domain.Entities;
 using OfficeJukebox.Domain.ValueObjects;
+using OfficeJukebox.Infrastructure.Music.Auth;
 
 namespace OfficeJukebox.Infrastructure.Music.YouTube;
 
 public sealed partial class YouTubeCatalogProvider(
     IHttpClientFactory httpClientFactory,
+    IProviderTokenService tokenService,
     IOptions<MusicProvidersOptions> options) : IMusicCatalogProvider
 {
     private const string ApiBase = "https://www.googleapis.com/youtube/v3/";
@@ -21,7 +23,7 @@ public sealed partial class YouTubeCatalogProvider(
 
     public async Task<IReadOnlyList<Track>> SearchAsync(string query, int limit, CancellationToken cancellationToken = default)
     {
-        var apiKey = GetApiKey();
+        var apiKey = await GetApiKeyAsync(cancellationToken);
         var effectiveLimit = Math.Clamp(limit, 1, MaxSearchLimit);
         var client = CreateClient();
         var url =
@@ -51,7 +53,7 @@ public sealed partial class YouTubeCatalogProvider(
 
     public async Task<Track> ResolveAsync(TrackRef trackRef, CancellationToken cancellationToken = default)
     {
-        var apiKey = GetApiKey();
+        var apiKey = await GetApiKeyAsync(cancellationToken);
         var client = CreateClient();
         var url =
             $"videos?part=snippet,contentDetails&id={Uri.EscapeDataString(trackRef.ExternalId)}&key={Uri.EscapeDataString(apiKey)}";
@@ -92,13 +94,19 @@ public sealed partial class YouTubeCatalogProvider(
         return client;
     }
 
-    private string GetApiKey()
+    private async Task<string> GetApiKeyAsync(CancellationToken cancellationToken)
     {
+        var fromDatabase = await tokenService.GetAccessTokenAsync(ProviderId, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(fromDatabase))
+        {
+            return fromDatabase;
+        }
+
         var apiKey = options.Value.YouTube.ApiKey;
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             throw new InvalidOperationException(
-                "YouTube is not configured. Set MusicProviders:YouTube:ApiKey in appsettings.");
+                "YouTube is not configured. Add a YouTube Data API key in provider settings.");
         }
 
         return apiKey;
