@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using OfficeJukebox.Api.Hubs;
+using OfficeJukebox.Contracts.Queue;
 
 namespace OfficeJukebox.Api.Controllers;
 
@@ -23,11 +24,9 @@ public sealed class InternalNotificationsController(IHubContext<QueueHub> hubCon
     }
 
     [HttpPost("playback-progress")]
-    public async Task<IActionResult> PlaybackProgress([FromBody] ProgressPayload payload, CancellationToken cancellationToken)
+    public async Task<IActionResult> PlaybackProgress([FromBody] PlaybackProgressEvent payload, CancellationToken cancellationToken)
     {
         await hubContext.Clients.All.SendAsync("PlaybackProgress", payload, cancellationToken);
         return Ok();
     }
-
-    public sealed record ProgressPayload(int ProgressMs, int DurationMs, bool IsPlaying);
 }

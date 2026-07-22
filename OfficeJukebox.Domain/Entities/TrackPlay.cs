@@ -3,6 +3,7 @@ namespace OfficeJukebox.Domain.Entities;
 public sealed class TrackPlay : Entity
 {
     public string User { get; set; } = string.Empty;
+    public DateTime QueuedAt { get; set; } = DateTime.UtcNow;
     public DateTime? StartedAt { get; set; }
     public bool Excluded { get; set; }
     public bool IsSkipped { get; set; }

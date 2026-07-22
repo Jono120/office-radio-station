@@ -1,7 +1,6 @@
 using OfficeJukebox.Api.Hubs;
 using OfficeJukebox.Api.Options;
 using OfficeJukebox.Api.Services;
-using OfficeJukebox.Application.Abstractions;
 using OfficeJukebox.Infrastructure;
 using OfficeJukebox.Infrastructure.Persistence;
 using Serilog;
@@ -48,11 +47,19 @@ builder.Services.AddCors(options =>
 });
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.Configure<AdminOptions>(builder.Configuration.GetSection(AdminOptions.SectionName));
-builder.Services.AddSingleton<IQueueNotifier, SignalRQueueNotifier>();
+
+var internalSecret = builder.Configuration["Security:InternalSharedSecret"];
+if (string.IsNullOrWhiteSpace(internalSecret))
+{
+    throw new InvalidOperationException(
+        "Security:InternalSharedSecret is not configured. It must match the Player's value.");
+}
+
 builder.Services.AddHttpClient<IPlayerClient, PlayerClient>(client =>
 {
     var baseUrl = builder.Configuration["Player:BaseUrl"] ?? "http://localhost:5050";
     client.BaseAddress = new Uri(baseUrl);
+    client.DefaultRequestHeaders.Add("X-Internal-Secret", internalSecret);
 });
 
 var app = builder.Build();
@@ -79,6 +86,25 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors();
 app.UseSession();
+
+// The internal notification endpoints exist solely for the Player; without
+// this gate anyone reaching the Api could broadcast spoofed SignalR events.
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/api/internal"))
+    {
+        if (!context.Request.Headers.TryGetValue("X-Internal-Secret", out var provided) ||
+            provided != internalSecret)
+        {
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            await context.Response.WriteAsJsonAsync(new { error = "Missing or invalid internal secret." });
+            return;
+        }
+    }
+
+    await next();
+});
+
 app.MapControllers();
 app.MapHub<QueueHub>("/hubs/queue");
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "OfficeJukebox.Api" }));

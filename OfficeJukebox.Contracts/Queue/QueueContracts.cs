@@ -66,8 +66,12 @@ public sealed record SaveProviderConnectionRequest(string ConnectionString);
 
 public sealed record ProviderConnectUrlResponse(string Url);
 
+/// <summary>
+/// The single payload shape for playback progress, used end to end:
+/// Player notifier → Api internal endpoint → SignalR "PlaybackProgress" event
+/// (serialized camelCase: progressMs / durationMs / isPlaying).
+/// </summary>
 public sealed record PlaybackProgressEvent(
-    Guid? TrackPlayId,
     int ProgressMs,
     int DurationMs,
     bool IsPlaying);

@@ -22,20 +22,21 @@ public sealed class CannotQueueTrackThatHasPlayedInTheLastXHoursQueueRule(
 
         var hours = options.Value.DontRepeatHours;
         // Duration-based window: pure UTC, no office-zone conversion needed
-        // because StartedAt is persisted in UTC.
+        // because StartedAt/QueuedAt are persisted in UTC.
         var cutoff = timeProvider.UtcNow.AddHours(-hours);
+
+        // The rule is global: nobody may repeat a recently played track,
+        // regardless of who queued it (per-user counts are handled by
+        // LimitNumberOfTracksQueuedByUser). The cutoff filter runs in SQL;
+        // only the small recent slice is identity-compared in memory.
+        // QueuedAt covers plays that are queued but not yet started.
         var hasRecentPlay = trackPlayRepository.GetAll()
+            .Where(q => (q.StartedAt ?? q.QueuedAt) > cutoff)
             .AsEnumerable()
-            .Any(q =>
-            {
-                var playedRef = identityComparer.FromTrackPlay(q);
-                return identityComparer.AreSame(playedRef, trackRef) &&
-                       q.StartedAt > cutoff &&
-                       q.User == user;
-            });
+            .Any(q => identityComparer.AreSame(identityComparer.FromTrackPlay(q), trackRef));
 
         return hasRecentPlay
-            ? $"Cannot queue a track that you queued in the last {hours} hours."
+            ? $"Cannot queue this track: it has already been played or queued in the last {hours} hours."
             : string.Empty;
     }
 }

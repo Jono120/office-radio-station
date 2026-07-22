@@ -14,11 +14,12 @@ public enum ProviderCapabilities
     RequiresAuth = 8
 }
 
+// No IsEnabled flag: disabled providers are simply not registered, so a
+// ProviderInfo existing implies the provider is enabled.
 public sealed record ProviderInfo(
     string Id,
     string DisplayName,
-    ProviderCapabilities Capabilities,
-    bool IsEnabled);
+    ProviderCapabilities Capabilities);
 
 public sealed record PlaybackDevice(
     string Id,

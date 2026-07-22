@@ -1,4 +1,5 @@
 using OfficeJukebox.Application.Abstractions;
+using OfficeJukebox.Contracts.Queue;
 
 namespace OfficeJukebox.Player.Services;
 
@@ -13,7 +14,7 @@ public sealed class HttpQueueNotifier(
         PostAsync("/api/internal/now-playing-changed", payload: null, cancellationToken);
 
     public Task NotifyPlaybackProgressAsync(int progressMs, int durationMs, bool isPlaying, CancellationToken cancellationToken = default) =>
-        PostAsync("/api/internal/playback-progress", new { progressMs, durationMs, isPlaying }, cancellationToken);
+        PostAsync("/api/internal/playback-progress", new PlaybackProgressEvent(progressMs, durationMs, isPlaying), cancellationToken);
 
     private async Task PostAsync(string path, object? payload, CancellationToken cancellationToken)
     {

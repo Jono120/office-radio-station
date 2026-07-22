@@ -6,7 +6,6 @@ public sealed class MusicProvidersOptions
 
     public string? WebAppUrl { get; set; }
     public ProviderOptions Spotify { get; set; } = new();
-    public ProviderOptions AppleMusic { get; set; } = new();
     public ProviderOptions YouTube { get; set; } = new();
     public ProviderOptions Manual { get; set; } = new() { Enabled = true };
 }

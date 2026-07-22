@@ -2,10 +2,9 @@ using Microsoft.AspNetCore.SignalR;
 
 namespace OfficeJukebox.Api.Hubs;
 
-public sealed class QueueHub : Hub
-{
-    public Task Subscribe() => Groups.AddToGroupAsync(Context.ConnectionId, "queue-updates");
-
-    public Task NotifyQueueChanged() =>
-        Clients.Group("queue-updates").SendAsync("QueueUpdated");
-}
+/// <summary>
+/// Connection point for web clients. Events (QueueChanged, NowPlayingChanged,
+/// PlaybackProgress) are broadcast by InternalNotificationsController when the
+/// Player reports a change; the hub itself defines no client-callable methods.
+/// </summary>
+public sealed class QueueHub : Hub;

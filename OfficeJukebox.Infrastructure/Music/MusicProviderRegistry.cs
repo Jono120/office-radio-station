@@ -15,9 +15,11 @@ public sealed class MusicProviderRegistry(IEnumerable<IMusicCatalogProvider> cat
             ? playback
             : null;
 
+    // Disabled providers are never registered (see Infrastructure DI), so
+    // everything in the registry is enabled by construction.
     public IReadOnlyList<ProviderInfo> ListEnabled() =>
         _catalog.Values
-            .Select(p => new ProviderInfo(p.ProviderId, GetDisplayName(p.ProviderId), p.Capabilities, true))
+            .Select(p => new ProviderInfo(p.ProviderId, GetDisplayName(p.ProviderId), p.Capabilities))
             .ToList();
 
     public IReadOnlyList<IMusicCatalogProvider> GetAllCatalogProviders() => _catalog.Values.ToList();
@@ -25,7 +27,6 @@ public sealed class MusicProviderRegistry(IEnumerable<IMusicCatalogProvider> cat
     private static string GetDisplayName(string providerId) => providerId switch
     {
         "spotify" => "Spotify",
-        "apple-music" => "Apple Music",
         "youtube" => "YouTube",
         "manual" => "Manual",
         _ => providerId

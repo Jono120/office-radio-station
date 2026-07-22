@@ -27,6 +27,9 @@
   "Admin": {
     "Password": "change-me"
   },
+  "Security": {
+    "InternalSharedSecret": "change-me-internal-secret"
+  },
   "MusicProviders": {
     "WebAppUrl": "http://localhost:5173",
     "Spotify": {
@@ -35,10 +38,6 @@
       "ClientSecret": "",
       "RedirectUri": "http://localhost:5080/api/providers/spotify/callback",
       "PreferredDeviceId": ""
-    },
-    "AppleMusic": {
-      "Enabled": false,
-      "DeveloperToken": ""
     },
     "YouTube": {
       "Enabled": true,

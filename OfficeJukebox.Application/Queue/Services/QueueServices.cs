@@ -22,7 +22,8 @@ public sealed class EnqueueTrackService(
     IQueueRuleHelper queueRuleHelper,
     IMusicProviderRegistry providerRegistry,
     ITrackPlayRepository trackPlayRepository,
-    IQueueNotifier queueNotifier) : IEnqueueTrackService
+    IQueueNotifier queueNotifier,
+    ITimeProvider timeProvider) : IEnqueueTrackService
 {
     public async Task<(TrackPlay? TrackPlay, IReadOnlyList<string> Errors)> EnqueueAsync(
         QueueTrackRequest request,
@@ -65,6 +66,7 @@ public sealed class EnqueueTrackService(
         var trackPlay = new TrackPlay
         {
             User = request.User,
+            QueuedAt = timeProvider.UtcNow,
             Track = track,
             Provider = providerId,
             ExternalId = externalId ?? string.Empty,

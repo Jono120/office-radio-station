@@ -50,6 +50,31 @@ public class CannotQueueTrackThatHasPlayedInTheLastXHoursTests
         Assert.NotEmpty(result);
     }
 
+    [Fact]
+    public void Rule_is_global_a_different_user_is_also_blocked()
+    {
+        _trackPlay.StartedAt = DateTime.UtcNow.AddHours(-1);
+        var repository = CreateRepository(_trackPlay);
+        var rule = CreateRule(repository, hours: 4);
+
+        var result = rule.CannotQueue(_trackPlay.Track, _trackRef, "someone else");
+
+        Assert.NotEmpty(result);
+    }
+
+    [Fact]
+    public void Queued_but_unplayed_track_falls_back_to_queued_at()
+    {
+        _trackPlay.StartedAt = null;
+        _trackPlay.QueuedAt = DateTime.UtcNow.AddMinutes(-10);
+        var repository = CreateRepository(_trackPlay);
+        var rule = CreateRule(repository, hours: 4);
+
+        var result = rule.CannotQueue(_trackPlay.Track, _trackRef, User);
+
+        Assert.NotEmpty(result);
+    }
+
     private static CannotQueueTrackThatHasPlayedInTheLastXHoursQueueRule CreateRule(
         Mock<ITrackPlayRepository> repository,
         int hours)

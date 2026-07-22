@@ -47,26 +47,28 @@ Goal: a plain `dotnet run` of Api + Player + `npm run dev` works end to end. No 
 
 ---
 
-## Phase 3 — Behavior and security majors
+## Phase 3 — Behavior and security majors ✅ COMPLETE (22 Jul 2026)
 
-8. **Fix the repeat-queue rule** (`CannotQueueTrackThatHasPlayedInTheLastXHoursQueueRule`)
-   - Decide the intent and make the name, message, and filter agree. Recommendation: the rule blocks **anyone** repeating a recently played track (matches the class name); per-user limits are already covered by `LimitNumberOfTracksQueuedByUser`.
-   - Push the cutoff filter into the repository (`GetPlayedSinceAsync(cutoff)`) instead of materialising the whole `TrackPlays` table per enqueue.
-   - Fall back to a queued-at timestamp when `StartedAt` is null so unplayed duplicates are also caught.
+8. ✅ **Fix the repeat-queue rule** (`CannotQueueTrackThatHasPlayedInTheLastXHoursQueueRule`)
+   - The rule is now global (the `q.User == user` filter and its misleading message are gone); per-user limits remain with `LimitNumberOfTracksQueuedByUser`.
+   - The cutoff filter now runs SQL-side as a `Where` on the repository's `IQueryable` before the in-memory identity comparison (no new repository method needed — same effect as `GetPlayedSinceAsync` without widening the interface, since the rule API is synchronous).
+   - New `TrackPlay.QueuedAt` column (UTC, set at enqueue; EF migration `AddTrackPlayQueuedAt`) backs a `StartedAt ?? QueuedAt` fallback so queued-but-unplayed duplicates are also caught. Pre-existing rows default to `DateTime.MinValue`, i.e. "long ago".
 
-9. **Authenticate internal and Player endpoints**
-   - Shared-secret header (one config value both services read): `HttpQueueNotifier` sends it, an endpoint filter on `api/internal/*` validates it; same filter on all Player endpoints validates calls from the Api's `PlayerClient`.
-   - Additionally bind the Player to localhost by default (`Urls` already `localhost:5050` — document that it must not be exposed).
-   - This closes both the SignalR-spoofing hole and the `RequireAdmin` bypass via direct Player calls.
+9. ✅ **Authenticate internal and Player endpoints**
+   - One shared config value, `Security:InternalSharedSecret`, in both services' committed `appsettings.json` (and the dev example); both fail fast at startup if it's missing. Values must match across the two services.
+   - The Api sends it as an `X-Internal-Secret` default header on the `PlayerClient`; Player middleware rejects everything except `/health` without it. The Player's notifier client sends the same header; Api middleware guards `/api/internal/*`.
+   - The Player keeps its `localhost:5050` binding — it must never be exposed beyond the machine; the secret is defense in depth on top of that.
 
-10. **Report provider enablement truthfully** (`MusicProviderRegistry`, `ProvidersController`)
-    - Don't register `DisabledCatalogProvider` placeholders at all — register only enabled providers and rename `ListEnabled()`'s hardcoded `true` to the real value (at which point the flag is always true and `ProviderInfo.IsEnabled` can be dropped entirely — simpler than fixing it).
-    - Remove `DisabledCatalogProvider` and the Apple Music stub (see item 15).
+10. ✅ **Report provider enablement truthfully** (`MusicProviderRegistry`, `ProvidersController`)
+    - Disabled providers are no longer registered at all: Infrastructure DI reads the `MusicProviders` section and registers only enabled catalog providers. `DisabledCatalogProvider` is deleted.
+    - `ProviderInfo.IsEnabled` was dropped entirely — presence in the registry implies enabled, so the `enabled: true` in `ProviderInfoResponse` is now truthful by construction.
+    - The Apple Music stub was removed (provider class, DI registration, `MusicProvidersOptions.AppleMusic`, example config section) — item 16's Apple Music bullet is done early.
 
-11. **Single notification design** (Api)
-    - Delete `SignalRQueueNotifier` and its DI registration (nothing resolves it).
-    - Delete `QueueHub.Subscribe`/`NotifyQueueChanged` (the `QueueUpdated` event no client listens to); keep the empty hub as the connection point.
-    - Define one `PlaybackProgressEvent` record in `OfficeJukebox.Contracts` and use it in `HttpQueueNotifier`, `InternalNotificationsController`, and the frontend type — replacing the three divergent shapes.
+11. ✅ **Single notification design** (Api)
+    - `SignalRQueueNotifier` and its DI registration deleted; `QueueHub` reduced to an empty connection point (`Subscribe`/`NotifyQueueChanged` and the orphan `QueueUpdated` event removed).
+    - `PlaybackProgressEvent` in `OfficeJukebox.Contracts` (trimmed to `ProgressMs`/`DurationMs`/`IsPlaying`) is now the one payload shape used by `HttpQueueNotifier`, `InternalNotificationsController`, and the SignalR broadcast; it serializes camelCase, matching the shape the frontend already reads.
+
+**Verify:** ✅ Done 22 Jul 2026 — build clean, 31/31 tests pass (2 new: global-scope block for a different user, `QueuedAt` fallback for unplayed tracks). Migration applied on Player startup. Live smoke: Player and `api/internal/*` calls without the secret → 401, with it → 200, `/health` open; enqueue by user A 201 then the same track by user B blocked 400; `/api/providers` lists only real providers (manual, spotify, youtube — no apple-music).
 
 ---
 
@@ -100,7 +102,7 @@ Goal: a plain `dotnet run` of Api + Player + `npm run dev` works end to end. No 
 
 16. **Delete orphaned and stub code**
     - Entities `AdminUser`, `RickRollTarget`, `SoundBoardEvent`, `SearchTerm`: unmapped by any feature — remove entities, `DbSet`s, and add one cleanup migration. (If any are planned features, note it in the plan doc and keep the entity out of the DbContext until built.)
-    - Apple Music: remove `AppleMusicCatalogProvider` and its registration until a real implementation exists (it currently throws on every playback call and searches nothing).
+    - ✅ Apple Music: removed in Phase 3 alongside the provider-enablement fix (item 10).
     - Remove `IMusicPlaybackController.PauseAsync`/`ResumeAsync` (no endpoint calls them) and `IMusicProviderRegistry.GetAllCatalogProviders()` (no callers), plus their provider implementations.
     - `TrackPlay` keeps both `IsSkipped` and `Status = Skipped` — redundant duplicated state; keep `Status` and derive/drop `IsSkipped`.
 

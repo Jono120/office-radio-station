@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using OfficeJukebox.Infrastructure.Persistence;
 
@@ -10,9 +11,11 @@ using OfficeJukebox.Infrastructure.Persistence;
 namespace OfficeJukebox.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(JukeboxDbContext))]
-    partial class JukeboxDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260722061135_AddTrackPlayQueuedAt")]
+    partial class AddTrackPlayQueuedAt
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
