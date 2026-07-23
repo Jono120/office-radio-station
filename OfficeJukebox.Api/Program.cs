@@ -133,3 +133,6 @@ app.MapHub<QueueHub>("/hubs/queue");
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "OfficeJukebox.Api" }));
 
 app.Run();
+
+// Exposes the entry point to WebApplicationFactory in OfficeJukebox.Api.Tests.
+public partial class Program;
