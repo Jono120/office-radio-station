@@ -47,3 +47,7 @@ coverage/
 
 # Local test payloads / credentials
 login.json
+
+# Data Protection key ring (never commit)
+**/DataProtection-Keys/
+**/keys/*.xml

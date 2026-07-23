@@ -21,6 +21,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     private readonly string _dbPath =
         Path.Combine(Path.GetTempPath(), $"officejukebox-api-tests-{Guid.NewGuid():N}.db");
 
+    private readonly string _keysPath =
+        Path.Combine(Path.GetTempPath(), $"officejukebox-api-tests-keys-{Guid.NewGuid():N}");
+
     /// <summary>The RemoteIpAddress every in-memory request appears to come from.</summary>
     public IPAddress? RemoteIp { get; set; } = IPAddress.Loopback;
 
@@ -32,7 +35,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
                 // Throwaway database so the startup reachability check passes
                 // without a Player run.
                 ["Storage:ConnectionString"] = $"Data Source={_dbPath}",
-                ["Organization:Domain"] = "contoso.test"
+                ["Organization:Domain"] = "contoso.test",
+                // Isolated key ring so tests never touch the developer's keys.
+                ["Security:DataProtection:KeysPath"] = _keysPath
             }));
 
         builder.ConfigureServices(services =>
@@ -43,6 +48,10 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     {
         base.Dispose(disposing);
         File.Delete(_dbPath);
+        if (Directory.Exists(_keysPath))
+        {
+            Directory.Delete(_keysPath, recursive: true);
+        }
     }
 
     private sealed class FakeRemoteIpStartupFilter(Func<IPAddress?> remoteIp) : IStartupFilter

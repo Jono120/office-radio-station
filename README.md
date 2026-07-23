@@ -93,7 +93,9 @@ Copy `appsettings.Development.json.example` to both `OfficeJukebox.Api/appsettin
 5. In admin settings, click **Devices** → **Use** on the target playback device.
 6. Return to the jukebox and search/queue tracks — playback runs on the selected Connect device.
 
-Tokens are stored encrypted in SQLite and refreshed automatically.
+Tokens are stored encrypted in SQLite via ASP.NET Core Data Protection and refreshed automatically. The shared key ring lives at `%LOCALAPPDATA%/OfficeJukebox/keys` (configurable via `Security:DataProtection:KeysPath`); on Windows the key files themselves are DPAPI-protected at rest. **Both Api and Player must run as the same Windows user** so they can read the same key ring and decrypt provider tokens.
+
+If you upgraded from a build that did not share keys between Api and Player, disconnect and reconnect Spotify once in Settings → Accounts — tokens encrypted with the old isolated key ring cannot be decrypted.
 
 ## YouTube connection
 
