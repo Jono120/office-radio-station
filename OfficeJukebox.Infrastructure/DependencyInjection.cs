@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OfficeJukebox.Application.Abstractions.Music;
@@ -7,6 +8,7 @@ using OfficeJukebox.Infrastructure.Music.Manual;
 using OfficeJukebox.Infrastructure.Music.Spotify;
 using OfficeJukebox.Infrastructure.Music.YouTube;
 using OfficeJukebox.Infrastructure.Persistence;
+using OfficeJukebox.Infrastructure.Security;
 
 namespace OfficeJukebox.Infrastructure;
 
@@ -16,7 +18,21 @@ public static class DependencyInjection
     {
         services.AddPersistence(configuration);
         services.AddOptions<MusicProvidersOptions>().BindConfiguration(MusicProvidersOptions.SectionName);
-        services.AddDataProtection();
+
+        var dataProtectionOptions = configuration.GetSection(DataProtectionStorageOptions.SectionName)
+            .Get<DataProtectionStorageOptions>() ?? new DataProtectionStorageOptions();
+        var keysDirectory = DataProtectionPathResolver.EnsureWritableKeysDirectory(
+            DataProtectionPathResolver.ResolveKeysPath(dataProtectionOptions.KeysPath));
+
+        var dataProtectionBuilder = services.AddDataProtection()
+            .SetApplicationName("OfficeJukebox")
+            .PersistKeysToFileSystem(keysDirectory);
+
+        // ProtectKeysWithDpapi is Windows-only; guard to avoid CA1416 on net10.0.
+        if (OperatingSystem.IsWindows())
+        {
+            dataProtectionBuilder.ProtectKeysWithDpapi();
+        }
         services.AddHttpClient("spotify");
         services.AddHttpClient("spotify-auth");
         services.AddHttpClient("youtube");
